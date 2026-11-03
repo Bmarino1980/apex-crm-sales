@@ -12041,6 +12041,7 @@
 
   const state = {
     grain: 'month',
+    screen: 'sales',
     metric: 'revenue',
     seller: [],
     region: '',
@@ -12070,6 +12071,7 @@
   let SALES_GEN = 0;
   let AR_ROWS = [];
   let AR_NAME = '';
+  let AR_LOADING = false;
   let COMPANY_INDEX = [];
   let DATA_MIN = null;
   let DATA_MAX = null;
@@ -13513,6 +13515,11 @@
   }
 
   function renderLateAr() {
+    if (AR_LOADING) {
+      board.innerHTML = '<section class="card ar-empty"><div class="card-h"><h3>Late AR</h3></div><p class="hint">Reading ' + esc(AR_NAME || 'the spreadsheet') + '…</p></section>';
+      syncChrome({ invoices: 0, matched: 0 });
+      return;
+    }
     if (!AR_ROWS.length) {
       board.innerHTML = '<section class="card ar-empty"><div class="card-h"><h3>Late AR</h3></div><p class="hint">Upload the Apex invoice summary for balances over 60 days. Company names, invoice numbers, amounts, and dates are matched to the sales CSV to find each Apex account number.</p><div class="ar-tools"><button type="button" class="icon-btn" id="arLoad">Upload spreadsheet</button></div></section>';
       syncChrome({ invoices: 0, matched: 0 });
@@ -13569,7 +13576,7 @@
   }
 
   function render() {
-    if (state.metric === 'latear') {
+    if (state.screen === 'latear') {
       renderLateAr();
       return;
     }
@@ -13648,8 +13655,8 @@
     $('dateFields').hidden = state.range !== 'custom';
     $('rangeReadout').hidden = !preset;
     if (preset) $('rangeReadout').textContent = shortDate(state.from) + ' – ' + shortDate(state.to);
-    document.querySelectorAll('#metricSeg button').forEach((b) => b.classList.toggle('on', b.dataset.metric === state.metric));
-    const late = state.metric === 'latear';
+    const late = state.screen === 'latear';
+    document.querySelectorAll('#metricSeg button').forEach((b) => b.classList.toggle('on', b.dataset.metric === (late ? 'latear' : state.metric)));
     $('filterToggle').hidden = late;
     $('rangeSeg').hidden = late;
     document.querySelector('h1').textContent = late ? 'Late AR' : 'Dashboard';
@@ -14214,7 +14221,12 @@
   $('metricSeg').addEventListener('click', (e) => {
     const b = e.target.closest('[data-metric]');
     if (!b) return;
-    state.metric = b.dataset.metric;
+    if (b.dataset.metric === 'latear') state.screen = 'latear';
+    else {
+      state.screen = 'sales';
+      state.metric = b.dataset.metric;
+    }
+    rememberScreen();
     render();
   });
   bindMulti('seller');
@@ -14435,37 +14447,95 @@
     }
     return [...map.values()];
   }
-  function rememberAr() {
-    try {
-      const rows = AR_ROWS.map((r) => ({
+  function rememberScreen() {
+    try { localStorage.setItem('apexCrmScreen', state.screen); } catch (err) { /* the tab will still work this visit */ }
+  }
+  function arPayload() {
+    return {
+      name: AR_NAME,
+      rows: AR_ROWS.map((r) => ({
         customer: r.customer,
         invoice: r.invoice,
         date: r.date ? iso(r.date) : '',
         due: r.due ? iso(r.due) : '',
         bucket: r.bucket,
         balance: r.balance
-      }));
-      localStorage.setItem('apexCrmLateAr', JSON.stringify({ name: AR_NAME, rows }));
-    } catch (err) { /* this browser could not keep the file */ }
+      }))
+    };
+  }
+  function applyArPayload(saved) {
+    if (!saved || !Array.isArray(saved.rows)) return false;
+    const rows = saved.rows.map((r) => ({
+      customer: r.customer,
+      invoice: r.invoice || '',
+      date: r.date ? parseISO(r.date) : null,
+      due: r.due ? parseISO(r.due) : null,
+      bucket: r.bucket || '',
+      balance: Number(r.balance) || 0
+    })).filter((r) => r.customer && r.date);
+    if (!rows.length) return false;
+    AR_ROWS = rows;
+    AR_NAME = saved.name || 'Saved invoice summary';
+    return true;
+  }
+  function rememberAr() {
+    const payload = arPayload();
+    let kept = false;
+    try {
+      localStorage.setItem('apexCrmLateAr', JSON.stringify(payload));
+      kept = true;
+    } catch (err) { /* fall through to IndexedDB */ }
+    try {
+      const req = indexedDB.open('apexCrmSales', 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains('kv')) req.result.createObjectStore('kv');
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('kv')) return;
+        db.transaction('kv', 'readwrite').objectStore('kv').put(payload, 'latear');
+      };
+    } catch (err) { /* storage is unavailable */ }
+    rememberScreen();
+    return kept;
   }
   function loadStoredAr() {
     try {
       const raw = localStorage.getItem('apexCrmLateAr');
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      if (!saved || !Array.isArray(saved.rows)) return;
-      AR_ROWS = saved.rows.map((r) => ({
-        customer: r.customer,
-        invoice: r.invoice || '',
-        date: r.date ? parseISO(r.date) : null,
-        due: r.due ? parseISO(r.due) : null,
-        bucket: r.bucket || '',
-        balance: Number(r.balance) || 0
-      })).filter((r) => r.customer && r.date);
-      AR_NAME = saved.name || 'Saved invoice summary';
-    } catch (err) { AR_ROWS = []; }
+      if (raw) applyArPayload(JSON.parse(raw));
+    } catch (err) { /* IndexedDB may still have the file */ }
+  }
+  function readStoredArIdb() {
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open('apexCrmSales', 1);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains('kv')) req.result.createObjectStore('kv');
+        };
+        req.onerror = () => resolve(null);
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('kv')) { resolve(null); return; }
+          const get = db.transaction('kv').objectStore('kv').get('latear');
+          get.onsuccess = () => resolve(get.result || null);
+          get.onerror = () => resolve(null);
+        };
+      } catch (err) { resolve(null); }
+    });
+  }
+  function restoreScreen() {
+    let saved = '';
+    try { saved = localStorage.getItem('apexCrmScreen') || ''; } catch (err) {}
+    if (saved === 'latear' || saved === 'sales') state.screen = saved;
+    else if (AR_ROWS.length) state.screen = 'latear';
   }
   function readArFile(file) {
+    state.screen = 'latear';
+    state.arCompany = '';
+    AR_LOADING = true;
+    AR_NAME = file.name;
+    rememberScreen();
+    render();
     const reader = new FileReader();
     reader.onload = () => {
       unzipFiles(reader.result).then((files) => {
@@ -14473,23 +14543,34 @@
         if (!rows.length) throw new Error('No invoices were found in that spreadsheet.');
         AR_ROWS = rows;
         AR_NAME = file.name;
-        state.metric = 'latear';
-        state.arCompany = '';
-        rememberAr();
-        showBanner('Loaded ' + file.name + ' · ' + rows.length.toLocaleString('en-US') + ' invoices. It will open again next time.');
+        AR_LOADING = false;
+        state.screen = 'latear';
+        const kept = rememberAr();
+        showBanner('Loaded ' + file.name + ' · ' + rows.length.toLocaleString('en-US') + ' invoices.' + (kept ? ' They stay on the Late AR tab.' : ' This browser could not keep the file for next time.'), !kept);
         render();
-      }).catch((err) => showBanner(err.message || 'Could not read that spreadsheet.', true));
+      }).catch((err) => {
+        AR_LOADING = false;
+        state.screen = 'latear';
+        render();
+        showBanner(err.message || 'Could not read that spreadsheet.', true);
+      });
     };
-    reader.onerror = () => showBanner('Could not read that file.', true);
+    reader.onerror = () => {
+      AR_LOADING = false;
+      showBanner('Could not read that file.', true);
+      render();
+    };
     reader.readAsArrayBuffer(file);
   }
   board.addEventListener('click', (e) => {
     if (e.target.closest('#arLoad')) {
+      state.screen = 'latear';
+      rememberScreen();
       $('ar-file').click();
       return;
     }
     const row = e.target.closest('[data-ar-company]');
-    if (!row || state.metric !== 'latear') return;
+    if (!row || state.screen !== 'latear') return;
     const key = decodeURIComponent(row.getAttribute('data-ar-company'));
     state.arCompany = state.arCompany === key ? '' : key;
     renderLateAr();
@@ -14513,6 +14594,7 @@
   });
 
   loadStoredAr();
+  restoreScreen();
   try {
     boot($('sales-csv').textContent, '');
   } catch (err) {
@@ -14525,6 +14607,12 @@
     } catch (err) {
       clearStoredCsv();
     }
+  });
+  readStoredArIdb().then((saved) => {
+    if (!saved || AR_ROWS.length) return;
+    if (!applyArPayload(saved)) return;
+    if (state.screen !== 'sales') state.screen = 'latear';
+    if (state.screen === 'latear') render();
   });
 })();
   </script>

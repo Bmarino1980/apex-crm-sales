@@ -330,6 +330,9 @@
   .ar-age { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
   .ar-age.late { color: #b42318; background: #fdecec; }
   .ar-age.mid { color: #b54708; background: #fef4e6; }
+  .ar-bal { min-width: 108px; }
+  .ar-bal .amt { display: block; }
+  .ar-bal .share { display: block; width: 88px; margin: 5px 0 0 auto; }
   .ar-companies { max-height: 440px; }
   .ar-invoices { max-height: 720px; }
   .empty, .loading { color: var(--muted); text-align: center; padding: 24px 8px; }
@@ -13536,16 +13539,33 @@
     const total = items.reduce((sum, item) => sum + item.balance, 0);
     const oldTotal = items.reduce((sum, item) => sum + (arNinety(item.bucket) ? item.balance : 0), 0);
     const matched = items.filter((item) => item.acct).length;
-    const invoiceRows = invoices.map((item) => '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td>' + esc(item.invoice) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(moneyExact(item.balance)) + '</td></tr>').join('');
+    const byCompany = new Map();
+    for (const item of items) {
+      const key = arKey(item);
+      let g = byCompany.get(key);
+      if (!g) g = { count: 0, oldest: item.date, old: 0, mid: 0 };
+      g.count += 1;
+      if (item.date < g.oldest) g.oldest = item.date;
+      if (arNinety(item.bucket)) g.old += item.balance;
+      else g.mid += item.balance;
+      byCompany.set(key, g);
+    }
+    const maxBal = Math.max(...invoices.map((item) => item.balance), 1);
+    const invoiceRows = invoices.map((item) => {
+      const g = byCompany.get(arKey(item));
+      const width = Math.max(2, item.balance / maxBal * 100);
+      return '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(item.invoice) + '</td><td class="ar-bal"><span class="amt">' + esc(moneyExact(item.balance)) + '</span><span class="share" title="' + esc(moneyExact(item.balance)) + '"><i style="width:' + width + '%"></i></span></td><td>' + esc(qty(g.count)) + '</td><td>' + esc(shortDate(g.oldest)) + '</td><td>' + esc(moneyExact(g.old)) + '</td><td>' + esc(moneyExact(g.mid)) + '</td></tr>';
+    }).join('');
     const invoiceTotal = invoices.reduce((sum, item) => sum + item.balance, 0);
+    const shownOld = invoices.reduce((sum, item) => sum + (arNinety(item.bucket) ? item.balance : 0), 0);
     board.innerHTML = '<div class="cards-4">' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Open balance</span></div><div class="k-value">' + esc(money(total)) + '</div><div class="side-hint">' + esc(moneyExact(total)) + ' still owed</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">90+ days</span></div><div class="k-value">' + esc(money(oldTotal)) + '</div><div class="side-hint">' + esc(money(total - oldTotal)) + ' is 61–90 days</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Invoices</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">' + esc(qty(companyCount)) + ' companies in this file</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Apex accounts</span></div><div class="k-value">' + esc(qty(matched)) + '</div><div class="side-hint">' + esc(qty(items.length - matched)) + ' still need a match</div></section>' +
       '</div>' +
-      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice, oldest date first. The sales-file company name is shown when it differs from the invoice summary. Open balance is the amount still owed.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · oldest date first</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
-      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr><th class="left">Company</th><th>Invoice date</th><th class="left">Apex account</th><th>Invoice</th><th>Aging</th><th>Open balance</th></tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left" colspan="5">Total</td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
+      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice, oldest date first. Invoices, oldest date, 90+ days, and 61–90 days are that company’s totals. The bar under balance due compares this invoice with the largest invoice.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · oldest date first</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
+      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr><th class="left">Company</th><th class="left">Apex account</th><th>Invoice date</th><th>Aging</th><th>Invoice</th><th>Balance due</th><th>Invoices</th><th>Oldest</th><th>90+ days</th><th>61–90 days</th></tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td><td>' + esc(qty(invoices.length)) + '</td><td></td><td>' + esc(moneyExact(shownOld)) + '</td><td>' + esc(moneyExact(invoiceTotal - shownOld)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
       '</section>';
     syncChrome({ invoices: items.length, matched });
   }
@@ -13557,12 +13577,26 @@
       const blob = (item.customer + ' ' + (item.crmName || '') + ' ' + (item.acct || '') + ' ' + (item.accts || []).join(' ') + ' ' + item.invoice).toLowerCase();
       return blob.indexOf(q) !== -1;
     }).sort((a, b) => a.date - b.date || String(a.customer).localeCompare(b.customer));
-    const lines = [['Company', 'Invoice file name', 'Invoice date', 'Apex account', 'Invoice', 'Aging', 'Open balance']];
-    invoices.forEach((item) => {
-      const acct = item.acct || (item.accts && item.accts.length ? item.accts.join(' | ') : '');
-      lines.push([item.crmName || item.customer, item.customer, iso(item.date), acct, item.invoice, item.bucket || '', round2(item.balance)]);
+    const byCompany = new Map();
+    matchedArItems().forEach((item) => {
+      const key = arKey(item);
+      let g = byCompany.get(key);
+      if (!g) g = { count: 0, oldest: item.date, old: 0, mid: 0 };
+      g.count += 1;
+      if (item.date < g.oldest) g.oldest = item.date;
+      if (arNinety(item.bucket)) g.old += item.balance;
+      else g.mid += item.balance;
+      byCompany.set(key, g);
     });
-    lines.push(['Total', '', '', '', '', '', round2(invoices.reduce((sum, item) => sum + item.balance, 0))]);
+    const lines = [['Company', 'Invoice file name', 'Apex account', 'Invoice date', 'Aging', 'Invoice', 'Balance due', 'Invoices', 'Oldest', '90+ days', '61-90 days']];
+    invoices.forEach((item) => {
+      const g = byCompany.get(arKey(item));
+      const acct = item.acct || (item.accts && item.accts.length ? item.accts.join(' | ') : '');
+      lines.push([item.crmName || item.customer, item.customer, acct, iso(item.date), item.bucket || '', item.invoice, round2(item.balance), g.count, iso(g.oldest), round2(g.old), round2(g.mid)]);
+    });
+    const invoiceTotal = invoices.reduce((sum, item) => sum + item.balance, 0);
+    const shownOld = invoices.reduce((sum, item) => sum + (arNinety(item.bucket) ? item.balance : 0), 0);
+    lines.push(['Total', '', '', '', '', '', round2(invoiceTotal), invoices.length, '', round2(shownOld), round2(invoiceTotal - shownOld)]);
     download('Apex-Late-AR.csv', toCSV(lines));
   }
 

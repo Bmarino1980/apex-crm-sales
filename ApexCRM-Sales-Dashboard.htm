@@ -12067,7 +12067,9 @@
     accountGrain: 'month',
     arQ: '',
     arFind: '',
-    arCompany: ''
+    arCompany: '',
+    arSort: 'date',
+    arDir: 'asc'
   };
 
   let ROWS = [];
@@ -13529,72 +13531,83 @@
       return;
     }
     const items = matchedArItems();
-    const q = state.arQ;
-    const invoices = items.filter((item) => {
-      if (!q) return true;
-      const blob = (item.customer + ' ' + (item.crmName || '') + ' ' + (item.acct || '') + ' ' + (item.accts || []).join(' ') + ' ' + item.invoice).toLowerCase();
-      return blob.indexOf(q) !== -1;
-    }).sort((a, b) => a.date - b.date || String(a.customer).localeCompare(b.customer));
     const companyCount = new Set(items.map(arKey)).size;
     const total = items.reduce((sum, item) => sum + item.balance, 0);
     const oldTotal = items.reduce((sum, item) => sum + (arNinety(item.bucket) ? item.balance : 0), 0);
     const matched = items.filter((item) => item.acct).length;
-    const byCompany = new Map();
-    for (const item of items) {
-      const key = arKey(item);
-      let g = byCompany.get(key);
-      if (!g) g = { count: 0, oldest: item.date, old: 0 };
-      g.count += 1;
-      if (item.date < g.oldest) g.oldest = item.date;
-      if (arNinety(item.bucket)) g.old += item.balance;
-      byCompany.set(key, g);
-    }
+    const byCompany = arCompanyCounts(items);
+    const invoices = arVisibleInvoices(items, byCompany);
     const maxBal = Math.max(...invoices.map((item) => item.balance), 1);
     const invoiceRows = invoices.map((item) => {
       const g = byCompany.get(arKey(item));
       const width = Math.max(2, item.balance / maxBal * 100);
-      return '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(item.invoice) + '</td><td class="ar-bal"><span class="amt">' + esc(moneyExact(item.balance)) + '</span><span class="share" title="' + esc(moneyExact(item.balance)) + '"><i style="width:' + width + '%"></i></span></td><td>' + esc(qty(g.count)) + '</td><td>' + esc(shortDate(g.oldest)) + '</td><td>' + esc(moneyExact(g.old)) + '</td></tr>';
+      return '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td>' + esc(qty(g.count)) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(item.invoice) + '</td><td class="ar-bal"><span class="amt">' + esc(moneyExact(item.balance)) + '</span><span class="share" title="' + esc(moneyExact(item.balance)) + '"><i style="width:' + width + '%"></i></span></td></tr>';
     }).join('');
     const invoiceTotal = invoices.reduce((sum, item) => sum + item.balance, 0);
-    const shownOld = invoices.reduce((sum, item) => sum + (arNinety(item.bucket) ? item.balance : 0), 0);
+    const arTh = (label, key, type, left) => '<th class="' + (left ? 'left' : '') + (state.arSort === key ? ' on' : '') + '" data-arsort="' + key + '" data-type="' + type + '">' + label + sortMark(state.arSort === key, state.arDir) + '</th>';
     board.innerHTML = '<div class="cards-4">' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Open balance</span></div><div class="k-value">' + esc(money(total)) + '</div><div class="side-hint">' + esc(moneyExact(total)) + ' still owed</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">90+ days</span></div><div class="k-value">' + esc(money(oldTotal)) + '</div><div class="side-hint">' + esc(money(total - oldTotal)) + ' is 61–90 days</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Invoices</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">' + esc(qty(companyCount)) + ' companies in this file</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Apex accounts</span></div><div class="k-value">' + esc(qty(matched)) + '</div><div class="side-hint">' + esc(qty(items.length - matched)) + ' still need a match</div></section>' +
       '</div>' +
-      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice, oldest date first. Invoices, oldest date, and 90+ days are that company’s totals. The bar under balance due compares this invoice with the largest invoice.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · oldest date first</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
-      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr><th class="left">Company</th><th class="left">Apex account</th><th>Invoice date</th><th>Aging</th><th>Invoice</th><th>Balance due</th><th>Invoices</th><th>Oldest</th><th>90+ days</th></tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td><td>' + esc(qty(invoices.length)) + '</td><td></td><td>' + esc(moneyExact(shownOld)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
+      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice. Invoices is how many open invoices that company has. The bar under balance due compares this invoice with the largest invoice. Click a column heading to sort.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · click a column to sort</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
+      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr>' + arTh('Company', 'company', 'text', true) + arTh('Apex account', 'account', 'text', true) + arTh('Invoice date', 'date', 'date', false) + arTh('Invoices', 'count', 'num', false) + arTh('Aging', 'aging', 'text', false) + arTh('Invoice', 'invoice', 'num', false) + arTh('Balance due', 'balance', 'num', false) + '</tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td>' + esc(qty(invoices.length)) + '</td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
       '</section>';
     syncChrome({ invoices: items.length, matched });
   }
 
-  function exportLateAr() {
+  function arCompanyCounts(items) {
+    const byCompany = new Map();
+    items.forEach((item) => {
+      const key = arKey(item);
+      let g = byCompany.get(key);
+      if (!g) g = { count: 0 };
+      g.count += 1;
+      byCompany.set(key, g);
+    });
+    return byCompany;
+  }
+  function arVisibleInvoices(items, byCompany) {
     const q = state.arQ;
-    const invoices = matchedArItems().filter((item) => {
+    const rows = items.filter((item) => {
       if (!q) return true;
       const blob = (item.customer + ' ' + (item.crmName || '') + ' ' + (item.acct || '') + ' ' + (item.accts || []).join(' ') + ' ' + item.invoice).toLowerCase();
       return blob.indexOf(q) !== -1;
-    }).sort((a, b) => a.date - b.date || String(a.customer).localeCompare(b.customer));
-    const byCompany = new Map();
-    matchedArItems().forEach((item) => {
-      const key = arKey(item);
-      let g = byCompany.get(key);
-      if (!g) g = { count: 0, oldest: item.date, old: 0 };
-      g.count += 1;
-      if (item.date < g.oldest) g.oldest = item.date;
-      if (arNinety(item.bucket)) g.old += item.balance;
-      byCompany.set(key, g);
     });
-    const lines = [['Company', 'Invoice file name', 'Apex account', 'Invoice date', 'Aging', 'Invoice', 'Balance due', 'Invoices', 'Oldest', '90+ days']];
+    const dir = state.arDir === 'asc' ? 1 : -1;
+    const value = (item) => {
+      if (state.arSort === 'company') return (item.crmName || item.customer || '').toLowerCase();
+      if (state.arSort === 'account') return (item.acct || (item.accts || []).join(' ')).toLowerCase();
+      if (state.arSort === 'date') return item.date ? item.date.getTime() : 0;
+      if (state.arSort === 'count') return (byCompany.get(arKey(item)) || { count: 0 }).count;
+      if (state.arSort === 'aging') return item.bucket || '';
+      if (state.arSort === 'invoice') {
+        const n = parseFloat(String(item.invoice || '').replace(/^0+/, ''));
+        return Number.isFinite(n) ? n : String(item.invoice || '').toLowerCase();
+      }
+      return item.balance;
+    };
+    rows.sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return (a.date - b.date) || String(a.customer).localeCompare(String(b.customer));
+    });
+    return rows;
+  }
+  function exportLateAr() {
+    const items = matchedArItems();
+    const byCompany = arCompanyCounts(items);
+    const invoices = arVisibleInvoices(items, byCompany);
+    const lines = [['Company', 'Invoice file name', 'Apex account', 'Invoice date', 'Invoices', 'Aging', 'Invoice', 'Balance due']];
     invoices.forEach((item) => {
       const g = byCompany.get(arKey(item));
       const acct = item.acct || (item.accts && item.accts.length ? item.accts.join(' | ') : '');
-      lines.push([item.crmName || item.customer, item.customer, acct, iso(item.date), item.bucket || '', item.invoice, round2(item.balance), g.count, iso(g.oldest), round2(g.old)]);
+      lines.push([item.crmName || item.customer, item.customer, acct, iso(item.date), g.count, item.bucket || '', item.invoice, round2(item.balance)]);
     });
-    const invoiceTotal = invoices.reduce((sum, item) => sum + item.balance, 0);
-    const shownOld = invoices.reduce((sum, item) => sum + (arNinety(item.bucket) ? item.balance : 0), 0);
-    lines.push(['Total', '', '', '', '', '', round2(invoiceTotal), invoices.length, '', round2(shownOld)]);
+    lines.push(['Total', '', '', '', invoices.length, '', '', round2(invoices.reduce((sum, item) => sum + item.balance, 0))]);
     download('Apex-Late-AR.csv', toCSV(lines));
   }
 
@@ -14172,6 +14185,14 @@
     clearChip(clear.dataset.clear, clear.dataset.value ? decodeURIComponent(clear.dataset.value) : '');
   });
   board.addEventListener('click', (e) => {
+    const arSort = e.target.closest('[data-arsort]');
+    if (arSort) {
+      const key = arSort.dataset.arsort;
+      if (state.arSort === key) state.arDir = state.arDir === 'asc' ? 'desc' : 'asc';
+      else { state.arSort = key; state.arDir = arSort.dataset.type === 'num' ? 'desc' : 'asc'; }
+      render();
+      return;
+    }
     const sort = e.target.closest('[data-sort]');
     if (sort) {
       const key = sort.dataset.sort;

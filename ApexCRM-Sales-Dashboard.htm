@@ -13641,20 +13641,6 @@
   }
 
   function syncChrome(model) {
-    $('stat').textContent = model.lines.toLocaleString('en-US') + ' lines · ' + model.invoices.toLocaleString('en-US') + ' invoices · ' + model.accounts.toLocaleString('en-US') + ' accounts · ' + money(model.revenue);
-    const companyFind = $('companyFind');
-    if (companyFind && document.activeElement !== companyFind) companyFind.value = state.company || '';
-    $('from').value = iso(state.from);
-    $('to').value = iso(state.to);
-    $('region').value = state.region;
-    syncMulti('seller');
-    syncMulti('category');
-    syncMulti('term');
-    document.querySelectorAll('#rangeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.range === state.range));
-    const preset = state.range === 'week' || state.range === 'month' || state.range === 'lastmonth' || state.range === 'year';
-    $('dateFields').hidden = state.range !== 'custom';
-    $('rangeReadout').hidden = !preset;
-    if (preset) $('rangeReadout').textContent = shortDate(state.from) + ' – ' + shortDate(state.to);
     const late = state.screen === 'latear';
     document.querySelectorAll('#metricSeg button').forEach((b) => b.classList.toggle('on', b.dataset.metric === (late ? 'latear' : state.metric)));
     $('filterToggle').hidden = late;
@@ -13676,6 +13662,20 @@
       $('foot').textContent = 'Open balance comes from the invoice summary. Apex account numbers are matched from the loaded sales CSV by invoice number, company name, amount, and invoice date. Load a newer CSV and the account numbers update. The last invoice file stays in this browser.';
       return;
     }
+    $('stat').textContent = model.lines.toLocaleString('en-US') + ' lines · ' + model.invoices.toLocaleString('en-US') + ' invoices · ' + model.accounts.toLocaleString('en-US') + ' accounts · ' + money(model.revenue);
+    const companyFind = $('companyFind');
+    if (companyFind && document.activeElement !== companyFind) companyFind.value = state.company || '';
+    $('from').value = iso(state.from);
+    $('to').value = iso(state.to);
+    $('region').value = state.region;
+    syncMulti('seller');
+    syncMulti('category');
+    syncMulti('term');
+    document.querySelectorAll('#rangeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.range === state.range));
+    const preset = state.range === 'week' || state.range === 'month' || state.range === 'lastmonth' || state.range === 'year';
+    $('dateFields').hidden = state.range !== 'custom';
+    $('rangeReadout').hidden = !preset;
+    if (preset) $('rangeReadout').textContent = shortDate(state.from) + ' – ' + shortDate(state.to);
     $('updated').textContent = 'Updated ' + longDate(DATA_MAX) + (SOURCE_NAME ? ' · ' + SOURCE_NAME : '') + ' · Click a column to sort · Click a bar or period to filter';
     const chips = [];
     state.seller.forEach((name) => chips.push(['Rep', name, 'seller', name]));

@@ -330,9 +330,11 @@
   .ar-age { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
   .ar-age.late { color: #b42318; background: #fdecec; }
   .ar-age.mid { color: #b54708; background: #fef4e6; }
-  .ar-stats { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-  .ar-stats li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .ar-stats b { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .ar-stats { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .ar-stats li { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+  .ar-stats b { font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+  .ar-stats .ar-tag { cursor: default; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ar-kpis { grid-template-columns: 1fr 1fr; }
   .ar-tag {
     border: 0; border-radius: 99px; padding: 3px 8px; font-size: 11px; font-weight: 700;
     letter-spacing: .02em; line-height: 1.3; cursor: pointer;
@@ -13676,7 +13678,7 @@
     }).join('');
     const invoiceTotal = invoices.reduce((sum, item) => sum + arOwed(item), 0);
     const arTh = (label, key, type, left) => '<th class="' + (left ? 'left' : '') + (state.arSort === key ? ' on' : '') + '" data-arsort="' + key + '" data-type="' + type + '">' + label + sortMark(state.arSort === key, state.arDir) + '</th>';
-    board.innerHTML = '<div class="cards-4">' +
+    board.innerHTML = '<div class="cards-4 ar-kpis">' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Open balance</span></div><div class="k-value">' + esc(money(total)) + '</div><div class="side-hint">' + esc(moneyExact(total)) + ' still owed</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">90+ days</span></div><div class="k-value">' + esc(money(oldTotal)) + '</div><div class="side-hint">' + esc(money(total - oldTotal)) + ' is 61–90 days</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">This week</span></div><div class="k-value">' + esc(qty(weekTotal)) + '</div><div class="side-hint">' + esc(weekLabel) + ' · invoices contacted</div>' + arStatList(weekCounts, AR_CONTACT_STATUSES.filter((status) => status !== 'PENDING')) + '</section>' +

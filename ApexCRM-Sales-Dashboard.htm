@@ -334,6 +334,11 @@
   .ar-stats li { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
   .ar-stats b { font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
   .ar-stats .ar-tag { cursor: default; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ar-week-top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; align-items: start; }
+  .ar-money { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .ar-money li { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+  .ar-money b { font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+  .ar-money .ar-tag { cursor: default; }
   .ar-kpis { grid-template-columns: 1fr 1fr; }
   .ar-tag {
     border: 0; border-radius: 99px; padding: 3px 8px; font-size: 11px; font-weight: 700;
@@ -13586,6 +13591,22 @@
   function arStatList(counts, statuses) {
     return '<ul class="ar-stats">' + statuses.map((status) => '<li><span class="ar-tag ' + arContactClass(status) + '">' + esc(status) + '</span><b>' + esc(qty(counts[status] || 0)) + '</b></li>').join('') + '</ul>';
   }
+  function arWeekMoney(items) {
+    const start = startOfWeek(new Date());
+    const end = addDays(start, 7);
+    const totals = { credited: 0, paid: 0, going: 0 };
+    items.forEach((item) => {
+      const contact = arContactOf(item);
+      if (!contact.date) return;
+      const day = parseISO(contact.date);
+      if (day < start || day >= end) return;
+      if (contact.status.indexOf('CREDIT') === 0) totals.credited += item.balance;
+      else if (contact.status === 'PAID') totals.paid += item.balance;
+      else if (contact.status === 'GOING TO PAY') totals.going += item.balance;
+    });
+    totals.resolved = totals.credited + totals.paid + totals.going;
+    return totals;
+  }
   function arContactClass(status) {
     if (status === 'CREDIT - Churn') return 'churn';
     if (status === 'CREDIT - No Churn') return 'nochurn';
@@ -13664,6 +13685,7 @@
     const weekTotal = AR_CONTACT_STATUSES.reduce((sum, status) => sum + (status === 'PENDING' ? 0 : weekCounts[status]), 0);
     const weekStart = startOfWeek(new Date());
     const weekLabel = shortDate(weekStart) + ' – ' + shortDate(addDays(weekStart, 6));
+    const resolved = arWeekMoney(items);
     const byCompany = arCompanyCounts(items);
     const invoices = arVisibleInvoices(items, byCompany);
     const maxBal = Math.max(...invoices.map((item) => arOwed(item)), 1);
@@ -13681,7 +13703,7 @@
     board.innerHTML = '<div class="cards-4 ar-kpis">' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Open balance</span></div><div class="k-value">' + esc(money(total)) + '</div><div class="side-hint">' + esc(moneyExact(total)) + ' still owed</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">90+ days</span></div><div class="k-value">' + esc(money(oldTotal)) + '</div><div class="side-hint">' + esc(money(total - oldTotal)) + ' is 61–90 days</div></section>' +
-      '<section class="card kpi"><div class="label-row"><span class="k-label">This week</span></div><div class="k-value">' + esc(qty(weekTotal)) + '</div><div class="side-hint">' + esc(weekLabel) + ' · invoices contacted</div>' + arStatList(weekCounts, AR_CONTACT_STATUSES.filter((status) => status !== 'PENDING')) + '</section>' +
+      '<section class="card kpi"><div class="label-row"><span class="k-label">This week</span></div><div class="ar-week-top"><div><div class="k-value">' + esc(qty(weekTotal)) + '</div><div class="side-hint">' + esc(weekLabel) + ' · invoices contacted</div></div><div><div class="k-label">Resolved</div><div class="k-value" title="' + esc(moneyExact(resolved.resolved)) + '">' + esc(money(resolved.resolved)) + '</div><div class="side-hint">credited, paid, or going to pay</div></div></div><ul class="ar-money"><li><span class="ar-tag churn">Credited</span><b title="' + esc(moneyExact(resolved.credited)) + '">' + esc(money(resolved.credited)) + '</b></li><li><span class="ar-tag paid">Paid</span><b title="' + esc(moneyExact(resolved.paid)) + '">' + esc(money(resolved.paid)) + '</b></li><li><span class="ar-tag going">Going to pay</span><b title="' + esc(moneyExact(resolved.going)) + '">' + esc(money(resolved.going)) + '</b></li></ul>' + arStatList(weekCounts, AR_CONTACT_STATUSES.filter((status) => status !== 'PENDING')) + '</section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Contact</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">invoices by status</div>' + arStatList(statusCounts, AR_CONTACT_STATUSES) + '</section>' +
       '</div>' +
       '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice. Click the contact tag to record what happened. Credit and Paid set that invoice’s open balance to zero. Date contacted is the day that tag changed. A new spreadsheet adds invoices that are not already here and leaves existing invoices as they are, except days past due, which is counted from the due date through today. Invoices is how many open invoices that company has. The bar under balance due compares this invoice with the largest invoice. Click a column heading to sort.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · click a column to sort</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +

@@ -339,6 +339,26 @@
   .ar-money li { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
   .ar-money b { font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
   .ar-money .ar-tag { cursor: default; }
+  .ar-note {
+    width: 26px; height: 26px; border: 0; border-radius: 8px; padding: 0;
+    background: #eef2f6; color: #8b97a8; display: inline-grid; place-items: center;
+  }
+  .ar-note svg { width: 14px; height: 14px; display: block; }
+  .ar-note.on { background: var(--blue); color: #fff; }
+  .ar-note-pop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(15, 23, 42, .35);
+    display: grid; place-items: center; padding: 16px;
+  }
+  .ar-note-card {
+    width: min(420px, 100%); background: #fff; border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, .2); padding: 16px;
+  }
+  .ar-note-card textarea {
+    width: 100%; min-height: 120px; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px; font: inherit; resize: vertical;
+  }
+  .ar-note-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .ar-note-save { border: 0; background: var(--blue); color: #fff; border-radius: 8px; height: 34px; padding: 0 14px; font-weight: 700; }
   .ar-kpis { grid-template-columns: 1fr 1fr; }
   .ar-contact-card { position: relative; }
   .ar-open { position: absolute; top: 16px; right: 16px; text-align: right; }
@@ -12114,7 +12134,10 @@
   let AR_NAME = '';
   let AR_LOADING = false;
   let AR_CONTACT = {};
+  let AR_NOTES = {};
   let arContactMenu = null;
+  let arNotePop = null;
+  let arNoteKey = '';
   const AR_CONTACT_STATUSES = ['PENDING', 'CREDIT - Churn', 'CREDIT - No Churn', 'DEACTIVATED', 'EMAILED', 'PAID', 'GOING TO PAY', 'VOICEMAIL'];
   let COMPANY_INDEX = [];
   let DATA_MIN = null;
@@ -13558,6 +13581,44 @@
     if (item.accts && item.accts.length) return '<span class="ar-none" title="More than one Apex account uses this name, and the amount and date did not pick one.">' + esc(item.accts.join(' · ')) + '</span>';
     return '<span class="ar-none">Not in sales file</span>';
   }
+  function arNoteText(item) {
+    return String(AR_NOTES[arKey(item)] || '').trim();
+  }
+  function arNoteHtml(item) {
+    const note = arNoteText(item);
+    const label = item.acct || item.crmName || item.customer || 'this account';
+    return '<button type="button" class="ar-note' + (note ? ' on' : '') + '" data-ar-note="' + esc(arKey(item)) + '" data-ar-label="' + esc(label) + '" title="' + esc(note || 'Add a note') + '" aria-label="' + esc(note ? 'Edit note' : 'Add a note') + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></button>';
+  }
+  function closeArNote() {
+    if (arNotePop) { arNotePop.remove(); arNotePop = null; }
+    arNoteKey = '';
+  }
+  function openArNote(key, label) {
+    closeArNote();
+    arNoteKey = key;
+    const pop = document.createElement('div');
+    pop.className = 'ar-note-pop';
+    pop.innerHTML = '<div class="ar-note-card" role="dialog" aria-label="Account notes"><div class="card-h"><h3>Notes</h3></div><p class="hint">' + esc(label) + '</p><textarea id="arNoteText" placeholder="Notes about this account"></textarea><div class="ar-note-actions"><button type="button" class="ghost" data-ar-note-close>Cancel</button><button type="button" class="ar-note-save" id="arNoteSave">Save</button></div></div>';
+    document.body.appendChild(pop);
+    const box = pop.querySelector('#arNoteText');
+    box.value = AR_NOTES[key] || '';
+    box.focus();
+    arNotePop = pop;
+  }
+  function saveArNote() {
+    if (!arNotePop || !arNoteKey) return;
+    const text = arNotePop.querySelector('#arNoteText').value.trim();
+    if (text) AR_NOTES[arNoteKey] = text;
+    else delete AR_NOTES[arNoteKey];
+    rememberArNotes();
+    closeArNote();
+    const wrap = board.querySelector('.ar-invoices');
+    const top = wrap ? wrap.scrollTop : 0;
+    const left = wrap ? wrap.scrollLeft : 0;
+    renderLateAr();
+    const again = board.querySelector('.ar-invoices');
+    if (again) { again.scrollTop = top; again.scrollLeft = left; }
+  }
   function daysPastDue(due) {
     if (!due) return null;
     const today = new Date();
@@ -13713,7 +13774,7 @@
       const lateDays = daysPastDue(item.due);
       const lateHtml = lateDays == null ? '—' : '<span title="Due ' + esc(shortDate(item.due)) + '">' + esc(qty(lateDays)) + '</span>';
       const balTitle = arSettled(item) ? moneyExact(item.balance) + ' before ' + arContactOf(item).status : moneyExact(owed);
-      return '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td class="left">' + arContactHtml(item) + '</td><td class="left">' + arContactDateHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td>' + lateHtml + '</td><td>' + esc(qty(g.count)) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(item.invoice) + '</td><td class="ar-bal"><span class="amt">' + esc(moneyExact(owed)) + '</span><span class="share" title="' + esc(balTitle) + '"><i style="width:' + width + '%"></i></span></td></tr>';
+      return '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td class="left">' + arNoteHtml(item) + '</td><td class="left">' + arContactHtml(item) + '</td><td class="left">' + arContactDateHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td>' + lateHtml + '</td><td>' + esc(qty(g.count)) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(item.invoice) + '</td><td class="ar-bal"><span class="amt">' + esc(moneyExact(owed)) + '</span><span class="share" title="' + esc(balTitle) + '"><i style="width:' + width + '%"></i></span></td></tr>';
     }).join('');
     const invoiceTotal = invoices.reduce((sum, item) => sum + arOwed(item), 0);
     const arTh = (label, key, type, left) => '<th class="' + (left ? 'left' : '') + (state.arSort === key ? ' on' : '') + '" data-arsort="' + key + '" data-type="' + type + '">' + label + sortMark(state.arSort === key, state.arDir) + '</th>';
@@ -13722,7 +13783,7 @@
       '<section class="card kpi ar-contact-card"><div class="ar-open"><span class="k-label">Open balance</span><b title="' + esc(moneyExact(total)) + '">' + esc(money(total)) + '</b></div><div class="label-row"><span class="k-label">Contact</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">invoices by status</div>' + arStatList(statusCounts, AR_CONTACT_STATUSES) + '</section>' +
       '</div>' +
       '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice. Click the contact tag to record what happened. Credit and Paid set that invoice’s open balance to zero. Date contacted is the day that tag changed. A new spreadsheet adds invoices that are not already here and leaves existing invoices as they are, except days past due, which is counted from the due date through today. Invoices is how many open invoices that company has. The bar under balance due compares this invoice with the largest invoice. Click a column heading to sort.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · click a column to sort</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
-      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr>' + arTh('Company', 'company', 'text', true) + arTh('Apex account', 'account', 'text', true) + arTh('Contact', 'contact', 'text', true) + arTh('Date contacted', 'contacted', 'num', true) + arTh('Invoice date', 'date', 'date', false) + arTh('Days past due', 'pastdue', 'num', false) + arTh('Invoices', 'count', 'num', false) + arTh('Aging', 'aging', 'text', false) + arTh('Invoice', 'invoice', 'num', false) + arTh('Balance due', 'balance', 'num', false) + '</tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td></td><td></td><td></td><td>' + esc(qty(invoices.length)) + '</td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
+      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr>' + arTh('Company', 'company', 'text', true) + arTh('Apex account', 'account', 'text', true) + arTh('Notes', 'note', 'text', true) + arTh('Contact', 'contact', 'text', true) + arTh('Date contacted', 'contacted', 'num', true) + arTh('Invoice date', 'date', 'date', false) + arTh('Days past due', 'pastdue', 'num', false) + arTh('Invoices', 'count', 'num', false) + arTh('Aging', 'aging', 'text', false) + arTh('Invoice', 'invoice', 'num', false) + arTh('Balance due', 'balance', 'num', false) + '</tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td></td><td></td><td></td><td></td><td>' + esc(qty(invoices.length)) + '</td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
       '</section>';
     syncChrome({ invoices: items.length, matched });
   }
@@ -13742,13 +13803,14 @@
     const q = state.arQ;
     const rows = items.filter((item) => {
       if (!q) return true;
-      const blob = (item.customer + ' ' + (item.crmName || '') + ' ' + (item.acct || '') + ' ' + (item.accts || []).join(' ') + ' ' + item.invoice + ' ' + arContactOf(item).status).toLowerCase();
+      const blob = (item.customer + ' ' + (item.crmName || '') + ' ' + (item.acct || '') + ' ' + (item.accts || []).join(' ') + ' ' + item.invoice + ' ' + arContactOf(item).status + ' ' + arNoteText(item)).toLowerCase();
       return blob.indexOf(q) !== -1;
     });
     const dir = state.arDir === 'asc' ? 1 : -1;
     const value = (item) => {
       if (state.arSort === 'company') return (item.crmName || item.customer || '').toLowerCase();
       if (state.arSort === 'account') return (item.acct || (item.accts || []).join(' ')).toLowerCase();
+      if (state.arSort === 'note') return arNoteText(item).toLowerCase();
       if (state.arSort === 'contact') return arContactOf(item).status.toLowerCase();
       if (state.arSort === 'contacted') {
         const date = arContactOf(item).date;
@@ -13780,15 +13842,15 @@
     const items = matchedArItems();
     const byCompany = arCompanyCounts(items);
     const invoices = arVisibleInvoices(items, byCompany);
-    const lines = [['Company', 'Invoice file name', 'Apex account', 'Contact', 'Date contacted', 'Invoice date', 'Days past due', 'Invoices', 'Aging', 'Invoice', 'Balance due']];
+    const lines = [['Company', 'Invoice file name', 'Apex account', 'Notes', 'Contact', 'Date contacted', 'Invoice date', 'Days past due', 'Invoices', 'Aging', 'Invoice', 'Balance due']];
     invoices.forEach((item) => {
       const g = byCompany.get(arKey(item));
       const acct = item.acct || (item.accts && item.accts.length ? item.accts.join(' | ') : '');
       const lateDays = daysPastDue(item.due);
       const contact = arContactOf(item);
-      lines.push([item.crmName || item.customer, item.customer, acct, contact.status, contact.date, iso(item.date), lateDays == null ? '' : lateDays, g.count, item.bucket || '', item.invoice, round2(arOwed(item))]);
+      lines.push([item.crmName || item.customer, item.customer, acct, arNoteText(item), contact.status, contact.date, iso(item.date), lateDays == null ? '' : lateDays, g.count, item.bucket || '', item.invoice, round2(arOwed(item))]);
     });
-    lines.push(['Total', '', '', '', '', '', '', invoices.length, '', '', round2(invoices.reduce((sum, item) => sum + arOwed(item), 0))]);
+    lines.push(['Total', '', '', '', '', '', '', '', invoices.length, '', '', round2(invoices.reduce((sum, item) => sum + arOwed(item), 0))]);
     downloadBlob('Apex-Late-AR.xlsx', toWorkbook(lines, 'Late AR'));
   }
 
@@ -14754,7 +14816,7 @@
       }
       const get = (name) => cells[header[name]] || '';
       if (kind === 'export') {
-        const parsed = parseExportRow(get);
+        const parsed = parseExportRow(get, Object.prototype.hasOwnProperty.call(header, 'Notes'));
         if (parsed) out.push(parsed);
         continue;
       }
@@ -14785,7 +14847,7 @@
     }
     return { kind: 'apex', rows: [...map.values()] };
   }
-  function parseExportRow(get) {
+  function parseExportRow(get, hasNotes) {
     const company = String(get('Company') || '').replace(/\s+/g, ' ').trim();
     const fileName = String(get('Invoice file name') || '').replace(/\s+/g, ' ').trim();
     const invoice = String(get('Invoice') || '').trim();
@@ -14813,7 +14875,8 @@
       acctLocked: true,
       acctSaved: String(get('Apex account') || '').trim(),
       contactStatus,
-      contactDate: contactDate ? iso(contactDate) : ''
+      contactDate: contactDate ? iso(contactDate) : '',
+      note: hasNotes ? String(get('Notes') || '') : null
     };
   }
   function rememberScreen() {
@@ -14928,6 +14991,54 @@
       } catch (err) { resolve(null); }
     });
   }
+  function rememberArNotes() {
+    try { localStorage.setItem('apexCrmArNotes', JSON.stringify(AR_NOTES)); } catch (err) { /* IndexedDB still keeps the notes */ }
+    try {
+      const req = indexedDB.open('apexCrmSales', 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains('kv')) req.result.createObjectStore('kv');
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('kv')) return;
+        db.transaction('kv', 'readwrite').objectStore('kv').put(AR_NOTES, 'arnotes');
+      };
+    } catch (err) { /* storage is unavailable */ }
+  }
+  function applyArNotes(saved) {
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return false;
+    const next = {};
+    Object.keys(saved).forEach((key) => {
+      const text = String(saved[key] || '').trim();
+      if (text) next[key] = text;
+    });
+    AR_NOTES = next;
+    return Object.keys(next).length > 0;
+  }
+  function loadStoredNotes() {
+    try {
+      const raw = localStorage.getItem('apexCrmArNotes');
+      if (raw) applyArNotes(JSON.parse(raw));
+    } catch (err) { /* IndexedDB may still have the notes */ }
+  }
+  function readStoredNotesIdb() {
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open('apexCrmSales', 1);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains('kv')) req.result.createObjectStore('kv');
+        };
+        req.onerror = () => resolve(null);
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('kv')) { resolve(null); return; }
+          const get = db.transaction('kv').objectStore('kv').get('arnotes');
+          get.onsuccess = () => resolve(get.result || null);
+          get.onerror = () => resolve(null);
+        };
+      } catch (err) { resolve(null); }
+    });
+  }
   function loadStoredAr() {
     try {
       const raw = localStorage.getItem('apexCrmLateAr');
@@ -14996,11 +15107,24 @@
       }
       if (!row.contactStatus || row.contactStatus === 'PENDING') delete AR_CONTACT[key];
       else AR_CONTACT[key] = { status: row.contactStatus, date: row.contactDate || iso(new Date()) };
+      if (row.note != null) {
+        const noteKey = exportNoteKey(row);
+        const text = String(row.note).trim();
+        if (text) AR_NOTES[noteKey] = text;
+        else delete AR_NOTES[noteKey];
+      }
     });
     if (added.length) AR_ROWS = AR_ROWS.concat(added);
     arMatched = null;
     rememberArContact();
+    rememberArNotes();
     return { updated, added: added.length };
+  }
+  function exportNoteKey(row) {
+    const parts = String(row.acctSaved || '').split(/\s*[|·]\s*/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length === 1) return 'acct:' + parts[0];
+    if (parts.length > 1) return 'review:' + parts.slice().sort().join(',');
+    return 'open:' + arNorm(row.customer);
   }
   function restoreScreen() {
     let saved = '';
@@ -15052,6 +15176,11 @@
     reader.readAsArrayBuffer(file);
   }
   board.addEventListener('click', (e) => {
+    const note = e.target.closest('[data-ar-note]');
+    if (note) {
+      openArNote(note.getAttribute('data-ar-note'), note.getAttribute('data-ar-label') || 'this account');
+      return;
+    }
     const tag = e.target.closest('[data-ar-contact]');
     if (tag) {
       openArContactMenu(tag);
@@ -15098,6 +15227,15 @@
   });
   window.addEventListener('scroll', closeArContactMenu, true);
   window.addEventListener('resize', closeArContactMenu);
+  document.addEventListener('click', (e) => {
+    if (!arNotePop) return;
+    if (e.target.closest('#arNoteSave')) { saveArNote(); return; }
+    if (e.target === arNotePop || e.target.closest('[data-ar-note-close]')) closeArNote();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && arNotePop) closeArNote();
+  });
+  loadStoredNotes();
   loadStoredContact();
   loadStoredAr();
   restoreScreen();
@@ -15123,6 +15261,11 @@
   readStoredContactIdb().then((saved) => {
     if (!saved || Object.keys(AR_CONTACT).length) return;
     if (!applyArContact(saved)) return;
+    if (state.screen === 'latear') render();
+  });
+  readStoredNotesIdb().then((saved) => {
+    if (!saved || Object.keys(AR_NOTES).length) return;
+    if (!applyArNotes(saved)) return;
     if (state.screen === 'latear') render();
   });
 })();

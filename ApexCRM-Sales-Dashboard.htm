@@ -378,7 +378,7 @@
         </div>
         <button type="button" class="icon-btn" id="load-btn" title="Load a newer ApexCRMSales CSV">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/><path d="M12 4v12"/><path d="M7 9l5-5 5 5"/></svg>
-          Load CSV
+          <span id="load-label">Load CSV</span>
         </button>
         <input id="file" type="file" accept=".csv,text/csv" hidden>
         <input id="ar-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
@@ -13521,58 +13521,49 @@
       return;
     }
     if (!AR_ROWS.length) {
-      board.innerHTML = '<section class="card ar-empty"><div class="card-h"><h3>Late AR</h3></div><p class="hint">Upload the Apex invoice summary for balances over 60 days. Company names, invoice numbers, amounts, and dates are matched to the sales CSV to find each Apex account number.</p><div class="ar-tools"><button type="button" class="icon-btn" id="arLoad">Upload spreadsheet</button></div></section>';
+      board.innerHTML = '<section class="card ar-empty"><div class="card-h"><h3>Late AR</h3></div><p class="hint">Use Upload spreadsheet at the top. Company names, invoice numbers, amounts, and dates are matched to the sales CSV to find each Apex account number.</p></section>';
       syncChrome({ invoices: 0, matched: 0 });
       return;
     }
     const items = matchedArItems();
     const q = state.arQ;
-    const visible = items.filter((item) => {
+    const invoices = items.filter((item) => {
       if (!q) return true;
       const blob = (item.customer + ' ' + (item.crmName || '') + ' ' + (item.acct || '') + ' ' + (item.accts || []).join(' ') + ' ' + item.invoice).toLowerCase();
       return blob.indexOf(q) !== -1;
-    });
-    const groups = new Map();
-    for (const item of visible) {
-      const key = arKey(item);
-      let g = groups.get(key);
-      if (!g) g = { key, item, balance: 0, count: 0, old: 0, mid: 0, oldest: item.date };
-      g.balance += item.balance;
-      g.count += 1;
-      if (arNinety(item.bucket)) g.old += item.balance;
-      else g.mid += item.balance;
-      if (item.date < g.oldest) g.oldest = item.date;
-      if (item.balance > g.item.balance) g.item = item;
-      groups.set(key, g);
-    }
-    const companies = [...groups.values()].sort((a, b) => b.balance - a.balance);
-    const maxBal = Math.max(...companies.map((g) => g.balance), 1);
-    const invoices = visible.filter((item) => !state.arCompany || arKey(item) === state.arCompany).slice().sort((a, b) => a.date - b.date || String(a.customer).localeCompare(b.customer));
+    }).sort((a, b) => a.date - b.date || String(a.customer).localeCompare(b.customer));
     const companyCount = new Set(items.map(arKey)).size;
     const total = items.reduce((sum, item) => sum + item.balance, 0);
     const oldTotal = items.reduce((sum, item) => sum + (arNinety(item.bucket) ? item.balance : 0), 0);
     const matched = items.filter((item) => item.acct).length;
-    const companyRows = companies.map((g) => {
-      const on = state.arCompany === g.key ? ' class="on"' : '';
-      return '<tr data-ar-company="' + encodeURIComponent(g.key) + '"' + on + '><td class="left ar-name">' + arNameHtml(g.item) + '</td><td class="left ar-acct">' + arAccountHtml(g.item) + '</td><td>' + esc(qty(g.count)) + '</td><td>' + esc(shortDate(g.oldest)) + '</td><td>' + esc(moneyExact(g.old)) + '</td><td>' + esc(moneyExact(g.mid)) + '</td><td><span class="share" title="' + esc(moneyExact(g.balance)) + '"><i style="width:' + (g.balance / maxBal * 100) + '%"></i></span>' + esc(moneyExact(g.balance)) + '</td></tr>';
-    }).join('');
     const invoiceRows = invoices.map((item) => '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td>' + esc(item.invoice) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(moneyExact(item.balance)) + '</td></tr>').join('');
     const invoiceTotal = invoices.reduce((sum, item) => sum + item.balance, 0);
-    const selected = state.arCompany ? companies.find((g) => g.key === state.arCompany) : null;
-    const listNote = selected ? 'Showing ' + esc(selected.item.crmName || selected.item.customer) + '. Click that company again to show every invoice.' : 'Every open invoice, oldest date first. Click a company above to show only that account.';
     board.innerHTML = '<div class="cards-4">' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Open balance</span></div><div class="k-value">' + esc(money(total)) + '</div><div class="side-hint">' + esc(moneyExact(total)) + ' still owed</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">90+ days</span></div><div class="k-value">' + esc(money(oldTotal)) + '</div><div class="side-hint">' + esc(money(total - oldTotal)) + ' is 61–90 days</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Invoices</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">' + esc(qty(companyCount)) + ' companies in this file</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Apex accounts</span></div><div class="k-value">' + esc(qty(matched)) + '</div><div class="side-hint">' + esc(qty(items.length - matched)) + ' still need a match</div></section>' +
       '</div>' +
-      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Grouped by the Apex account when one was found. The name from the sales file is shown when it differs from the invoice summary. Open balance is the amount still owed on each invoice.">?</span></div><p>' + esc(companies.length.toLocaleString('en-US')) + ' companies · click a row to filter the invoice list</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="icon-btn" id="arLoad">Upload spreadsheet</button></div></div>' +
-      (companyRows ? '<div class="table-wrap ar-table ar-companies"><table><thead><tr><th class="left">Company</th><th class="left">Apex account</th><th>Invoices</th><th>Oldest</th><th>90+ days</th><th>61–90 days</th><th>Open balance</th></tr></thead><tbody>' + companyRows + '</tbody></table></div>' : '<div class="empty">No companies match that search.</div>') +
-      '</section>' +
-      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Open invoices</h3></div><p>' + listNote + '</p></div></div>' +
+      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice, oldest date first. The sales-file company name is shown when it differs from the invoice summary. Open balance is the amount still owed.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · oldest date first</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
       (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr><th class="left">Company</th><th>Invoice date</th><th class="left">Apex account</th><th>Invoice</th><th>Aging</th><th>Open balance</th></tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left" colspan="5">Total</td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
       '</section>';
     syncChrome({ invoices: items.length, matched });
+  }
+
+  function exportLateAr() {
+    const q = state.arQ;
+    const invoices = matchedArItems().filter((item) => {
+      if (!q) return true;
+      const blob = (item.customer + ' ' + (item.crmName || '') + ' ' + (item.acct || '') + ' ' + (item.accts || []).join(' ') + ' ' + item.invoice).toLowerCase();
+      return blob.indexOf(q) !== -1;
+    }).sort((a, b) => a.date - b.date || String(a.customer).localeCompare(b.customer));
+    const lines = [['Company', 'Invoice file name', 'Invoice date', 'Apex account', 'Invoice', 'Aging', 'Open balance']];
+    invoices.forEach((item) => {
+      const acct = item.acct || (item.accts && item.accts.length ? item.accts.join(' | ') : '');
+      lines.push([item.crmName || item.customer, item.customer, iso(item.date), acct, item.invoice, item.bucket || '', round2(item.balance)]);
+    });
+    lines.push(['Total', '', '', '', '', '', round2(invoices.reduce((sum, item) => sum + item.balance, 0))]);
+    download('Apex-Late-AR.csv', toCSV(lines));
   }
 
   function render() {
@@ -13646,6 +13637,9 @@
     $('filterToggle').hidden = late;
     $('rangeSeg').hidden = late;
     document.querySelector('h1').textContent = late ? 'Late AR' : 'Dashboard';
+    const loadLabel = $('load-label');
+    if (loadLabel) loadLabel.textContent = late ? 'Upload spreadsheet' : 'Load CSV';
+    $('load-btn').title = late ? 'Upload the Apex invoice summary' : 'Load a newer ApexCRMSales CSV';
     if (late) {
       $('filters').hidden = true;
       $('filterToggle').classList.remove('on');
@@ -14307,7 +14301,10 @@
   $('from').addEventListener('change', onDateInput);
   $('to').addEventListener('change', onDateInput);
   $('clear').addEventListener('click', clearFilters);
-  $('load-btn').addEventListener('click', () => $('file').click());
+  $('load-btn').addEventListener('click', () => {
+    if (state.screen === 'latear') $('ar-file').click();
+    else $('file').click();
+  });
   $('file').addEventListener('change', () => {
     const file = $('file').files && $('file').files[0];
     $('file').value = '';
@@ -14563,10 +14560,8 @@
     reader.readAsArrayBuffer(file);
   }
   board.addEventListener('click', (e) => {
-    if (e.target.closest('#arLoad')) {
-      state.screen = 'latear';
-      rememberScreen();
-      $('ar-file').click();
+    if (e.target.closest('#arExport')) {
+      exportLateAr();
       return;
     }
     const row = e.target.closest('[data-ar-company]');

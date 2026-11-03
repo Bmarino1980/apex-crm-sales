@@ -340,6 +340,10 @@
   .ar-money b { font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
   .ar-money .ar-tag { cursor: default; }
   .ar-kpis { grid-template-columns: 1fr 1fr; }
+  .ar-contact-card { position: relative; }
+  .ar-open { position: absolute; top: 16px; right: 16px; text-align: right; }
+  .ar-open .k-label { display: block; margin: 0; font-size: 10px; }
+  .ar-open b { display: block; margin-top: 2px; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
   .ar-tag {
     border: 0; border-radius: 99px; padding: 3px 8px; font-size: 11px; font-weight: 700;
     letter-spacing: .02em; line-height: 1.3; cursor: pointer;
@@ -13678,7 +13682,6 @@
     }
     const items = matchedArItems();
     const total = items.reduce((sum, item) => sum + arOwed(item), 0);
-    const oldTotal = items.reduce((sum, item) => sum + (arNinety(item.bucket) ? arOwed(item) : 0), 0);
     const matched = items.filter((item) => item.acct).length;
     const statusCounts = arStatusCounts(items, false);
     const weekCounts = arStatusCounts(items, true);
@@ -13701,10 +13704,8 @@
     const invoiceTotal = invoices.reduce((sum, item) => sum + arOwed(item), 0);
     const arTh = (label, key, type, left) => '<th class="' + (left ? 'left' : '') + (state.arSort === key ? ' on' : '') + '" data-arsort="' + key + '" data-type="' + type + '">' + label + sortMark(state.arSort === key, state.arDir) + '</th>';
     board.innerHTML = '<div class="cards-4 ar-kpis">' +
-      '<section class="card kpi"><div class="label-row"><span class="k-label">Open balance</span></div><div class="k-value">' + esc(money(total)) + '</div><div class="side-hint">' + esc(moneyExact(total)) + ' still owed</div></section>' +
-      '<section class="card kpi"><div class="label-row"><span class="k-label">90+ days</span></div><div class="k-value">' + esc(money(oldTotal)) + '</div><div class="side-hint">' + esc(money(total - oldTotal)) + ' is 61–90 days</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">This week</span></div><div class="ar-week-top"><div><div class="k-value">' + esc(qty(weekTotal)) + '</div><div class="side-hint">' + esc(weekLabel) + ' · invoices contacted</div></div><div><div class="k-label">Resolved</div><div class="k-value" title="' + esc(moneyExact(resolved.resolved)) + '">' + esc(money(resolved.resolved)) + '</div><div class="side-hint">credited, paid, or going to pay</div></div></div><ul class="ar-money"><li><span class="ar-tag churn">Credited</span><b title="' + esc(moneyExact(resolved.credited)) + '">' + esc(money(resolved.credited)) + '</b></li><li><span class="ar-tag paid">Paid</span><b title="' + esc(moneyExact(resolved.paid)) + '">' + esc(money(resolved.paid)) + '</b></li><li><span class="ar-tag going">Going to pay</span><b title="' + esc(moneyExact(resolved.going)) + '">' + esc(money(resolved.going)) + '</b></li></ul>' + arStatList(weekCounts, AR_CONTACT_STATUSES.filter((status) => status !== 'PENDING')) + '</section>' +
-      '<section class="card kpi"><div class="label-row"><span class="k-label">Contact</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">invoices by status</div>' + arStatList(statusCounts, AR_CONTACT_STATUSES) + '</section>' +
+      '<section class="card kpi ar-contact-card"><div class="ar-open"><span class="k-label">Open balance</span><b title="' + esc(moneyExact(total)) + '">' + esc(money(total)) + '</b></div><div class="label-row"><span class="k-label">Contact</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">invoices by status</div>' + arStatList(statusCounts, AR_CONTACT_STATUSES) + '</section>' +
       '</div>' +
       '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice. Click the contact tag to record what happened. Credit and Paid set that invoice’s open balance to zero. Date contacted is the day that tag changed. A new spreadsheet adds invoices that are not already here and leaves existing invoices as they are, except days past due, which is counted from the due date through today. Invoices is how many open invoices that company has. The bar under balance due compares this invoice with the largest invoice. Click a column heading to sort.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · click a column to sort</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
       (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr>' + arTh('Company', 'company', 'text', true) + arTh('Apex account', 'account', 'text', true) + arTh('Contact', 'contact', 'text', true) + arTh('Date contacted', 'contacted', 'num', true) + arTh('Invoice date', 'date', 'date', false) + arTh('Days past due', 'pastdue', 'num', false) + arTh('Invoices', 'count', 'num', false) + arTh('Aging', 'aging', 'text', false) + arTh('Invoice', 'invoice', 'num', false) + arTh('Balance due', 'balance', 'num', false) + '</tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td></td><td></td><td></td><td>' + esc(qty(invoices.length)) + '</td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +

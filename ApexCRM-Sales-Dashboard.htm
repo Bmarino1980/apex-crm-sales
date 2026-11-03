@@ -13509,6 +13509,13 @@
     if (item.accts && item.accts.length) return '<span class="ar-none" title="More than one Apex account uses this name, and the amount and date did not pick one.">' + esc(item.accts.join(' · ')) + '</span>';
     return '<span class="ar-none">Not in sales file</span>';
   }
+  function daysPastDue(due) {
+    if (!due) return null;
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    return Math.round((start - dueDay) / 86400000);
+  }
   function arAgeHtml(bucket) {
     const late = arNinety(bucket);
     return '<span class="ar-age ' + (late ? 'late' : 'mid') + '">' + esc(bucket || (late ? '90+ Days' : '61–90 Days')) + '</span>';
@@ -13541,7 +13548,9 @@
     const invoiceRows = invoices.map((item) => {
       const g = byCompany.get(arKey(item));
       const width = Math.max(2, item.balance / maxBal * 100);
-      return '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td>' + esc(qty(g.count)) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(item.invoice) + '</td><td class="ar-bal"><span class="amt">' + esc(moneyExact(item.balance)) + '</span><span class="share" title="' + esc(moneyExact(item.balance)) + '"><i style="width:' + width + '%"></i></span></td></tr>';
+      const lateDays = daysPastDue(item.due);
+      const lateHtml = lateDays == null ? '—' : '<span title="Due ' + esc(shortDate(item.due)) + '">' + esc(qty(lateDays)) + '</span>';
+      return '<tr><td class="left ar-name">' + arNameHtml(item) + '</td><td class="left ar-acct">' + arAccountHtml(item) + '</td><td>' + esc(shortDate(item.date)) + '</td><td>' + lateHtml + '</td><td>' + esc(qty(g.count)) + '</td><td>' + arAgeHtml(item.bucket) + '</td><td>' + esc(item.invoice) + '</td><td class="ar-bal"><span class="amt">' + esc(moneyExact(item.balance)) + '</span><span class="share" title="' + esc(moneyExact(item.balance)) + '"><i style="width:' + width + '%"></i></span></td></tr>';
     }).join('');
     const invoiceTotal = invoices.reduce((sum, item) => sum + item.balance, 0);
     const arTh = (label, key, type, left) => '<th class="' + (left ? 'left' : '') + (state.arSort === key ? ' on' : '') + '" data-arsort="' + key + '" data-type="' + type + '">' + label + sortMark(state.arSort === key, state.arDir) + '</th>';
@@ -13551,8 +13560,8 @@
       '<section class="card kpi"><div class="label-row"><span class="k-label">Invoices</span></div><div class="k-value">' + esc(qty(items.length)) + '</div><div class="side-hint">' + esc(qty(companyCount)) + ' companies in this file</div></section>' +
       '<section class="card kpi"><div class="label-row"><span class="k-label">Apex accounts</span></div><div class="k-value">' + esc(qty(matched)) + '</div><div class="side-hint">' + esc(qty(items.length - matched)) + ' still need a match</div></section>' +
       '</div>' +
-      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice. Invoices is how many open invoices that company has. The bar under balance due compares this invoice with the largest invoice. Click a column heading to sort.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · click a column to sort</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
-      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr>' + arTh('Company', 'company', 'text', true) + arTh('Apex account', 'account', 'text', true) + arTh('Invoice date', 'date', 'date', false) + arTh('Invoices', 'count', 'num', false) + arTh('Aging', 'aging', 'text', false) + arTh('Invoice', 'invoice', 'num', false) + arTh('Balance due', 'balance', 'num', false) + '</tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td>' + esc(qty(invoices.length)) + '</td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
+      '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Who owes what</h3><span class="help" title="Each open invoice. Days past due is counted from the due date through today. Invoices is how many open invoices that company has. The bar under balance due compares this invoice with the largest invoice. Click a column heading to sort.">?</span></div><p>' + esc(invoices.length.toLocaleString('en-US')) + ' invoices · click a column to sort</p></div><div class="ar-tools"><input id="arFind" type="search" placeholder="Company, account, or invoice" value="' + esc(state.arFind) + '"><button type="button" class="ghost" id="arExport">Export</button></div></div>' +
+      (invoiceRows ? '<div class="table-wrap ar-table ar-invoices"><table><thead><tr>' + arTh('Company', 'company', 'text', true) + arTh('Apex account', 'account', 'text', true) + arTh('Invoice date', 'date', 'date', false) + arTh('Days past due', 'pastdue', 'num', false) + arTh('Invoices', 'count', 'num', false) + arTh('Aging', 'aging', 'text', false) + arTh('Invoice', 'invoice', 'num', false) + arTh('Balance due', 'balance', 'num', false) + '</tr></thead><tbody>' + invoiceRows + '<tr class="total"><td class="left">Total</td><td></td><td></td><td></td><td>' + esc(qty(invoices.length)) + '</td><td></td><td></td><td>' + esc(moneyExact(invoiceTotal)) + '</td></tr></tbody></table></div>' : '<div class="empty">No invoices match.</div>') +
       '</section>';
     syncChrome({ invoices: items.length, matched });
   }
@@ -13580,6 +13589,10 @@
       if (state.arSort === 'company') return (item.crmName || item.customer || '').toLowerCase();
       if (state.arSort === 'account') return (item.acct || (item.accts || []).join(' ')).toLowerCase();
       if (state.arSort === 'date') return item.date ? item.date.getTime() : 0;
+      if (state.arSort === 'pastdue') {
+        const days = daysPastDue(item.due);
+        return days == null ? -1 : days;
+      }
       if (state.arSort === 'count') return (byCompany.get(arKey(item)) || { count: 0 }).count;
       if (state.arSort === 'aging') return item.bucket || '';
       if (state.arSort === 'invoice') {
@@ -13601,13 +13614,14 @@
     const items = matchedArItems();
     const byCompany = arCompanyCounts(items);
     const invoices = arVisibleInvoices(items, byCompany);
-    const lines = [['Company', 'Invoice file name', 'Apex account', 'Invoice date', 'Invoices', 'Aging', 'Invoice', 'Balance due']];
+    const lines = [['Company', 'Invoice file name', 'Apex account', 'Invoice date', 'Days past due', 'Invoices', 'Aging', 'Invoice', 'Balance due']];
     invoices.forEach((item) => {
       const g = byCompany.get(arKey(item));
       const acct = item.acct || (item.accts && item.accts.length ? item.accts.join(' | ') : '');
-      lines.push([item.crmName || item.customer, item.customer, acct, iso(item.date), g.count, item.bucket || '', item.invoice, round2(item.balance)]);
+      const lateDays = daysPastDue(item.due);
+      lines.push([item.crmName || item.customer, item.customer, acct, iso(item.date), lateDays == null ? '' : lateDays, g.count, item.bucket || '', item.invoice, round2(item.balance)]);
     });
-    lines.push(['Total', '', '', '', invoices.length, '', '', round2(invoices.reduce((sum, item) => sum + item.balance, 0))]);
+    lines.push(['Total', '', '', '', '', invoices.length, '', '', round2(invoices.reduce((sum, item) => sum + item.balance, 0))]);
     download('Apex-Late-AR.csv', toCSV(lines));
   }
 

@@ -13533,7 +13533,17 @@
   function matchedArItems() {
     if (arMatched && arMatchedGen === SALES_GEN && arMatchedRows === AR_ROWS) return arMatched;
     const books = salesBooks();
-    arMatched = AR_ROWS.map((row) => Object.assign({}, row, matchOne(row, books)));
+    arMatched = AR_ROWS.map((row) => {
+      const matched = Object.assign({}, row, matchOne(row, books));
+      if (row.nameSaved) matched.crmName = row.nameSaved;
+      if (row.acctLocked) {
+        const parts = String(row.acctSaved || '').split(/\s*[|·]\s*/).map((part) => part.trim()).filter(Boolean);
+        matched.acct = parts.length === 1 ? parts[0] : '';
+        matched.accts = parts.length > 1 ? parts : (parts.length === 1 ? parts : []);
+        matched.how = parts.length > 1 ? 'review' : (parts.length === 1 ? 'saved' : '');
+      }
+      return matched;
+    });
     arMatchedGen = SALES_GEN;
     arMatchedRows = AR_ROWS;
     return arMatched;
@@ -13574,6 +13584,7 @@
     return status === 'PAID' || status.indexOf('CREDIT') === 0;
   }
   function arOwed(item) {
+    if (item.owedLocked) return Number(item.owed) || 0;
     return arSettled(item) ? 0 : item.balance;
   }
   function arStatusCounts(items, weekOnly) {
@@ -13655,7 +13666,10 @@
     if (AR_CONTACT_STATUSES.indexOf(status) < 0) return;
     if (status === 'PENDING') delete AR_CONTACT[key];
     else AR_CONTACT[key] = { status, date: iso(new Date()) };
+    const row = AR_ROWS.find((item) => contactKey(item) === key);
+    if (row && row.owedLocked) row.owedLocked = false;
     rememberArContact();
+    if (row) rememberAr();
     const wrap = board.querySelector('.ar-invoices');
     const top = wrap ? wrap.scrollTop : 0;
     const left = wrap ? wrap.scrollLeft : 0;
@@ -13664,8 +13678,8 @@
     if (again) { again.scrollTop = top; again.scrollLeft = left; }
   }
   function arNameHtml(item) {
-    const main = item.crmName || item.customer;
-    const extra = item.crmName && arNorm(item.crmName) !== arNorm(item.customer) ? '<span class="subname">' + esc(item.customer) + '</span>' : '';
+    const main = item.nameSaved || item.crmName || item.customer;
+    const extra = item.customer && arNorm(main) !== arNorm(item.customer) ? '<span class="subname">' + esc(item.customer) + '</span>' : '';
     return '<div class="ar-name"><b>' + esc(main) + '</b>' + extra + '</div>';
   }
 
@@ -13676,7 +13690,7 @@
       return;
     }
     if (!AR_ROWS.length) {
-      board.innerHTML = '<section class="card ar-empty"><div class="card-h"><h3>Late AR</h3></div><p class="hint">Use Upload spreadsheet at the top. Company names, invoice numbers, amounts, and dates are matched to the sales CSV to find each Apex account number.</p></section>';
+      board.innerHTML = '<section class="card ar-empty"><div class="card-h"><h3>Late AR</h3></div><p class="hint">Use Upload spreadsheet at the top. An Apex invoice summary adds new invoices. A Late AR export from this page updates the matching invoices, including what is owed.</p></section>';
       syncChrome({ invoices: 0, matched: 0 });
       return;
     }
@@ -14726,16 +14740,24 @@
     if (!sheetName) throw new Error('That workbook has no sheet to read.');
     const rows = sheetRows(files[sheetName], strings);
     let header = null;
+    let kind = '';
     const out = [];
     for (const cells of rows) {
       if (!header) {
-        if (Object.values(cells).some((v) => String(v).trim() === 'Customer')) {
-          header = {};
-          for (const [col, val] of Object.entries(cells)) header[String(val).trim()] = col;
-        }
+        const values = Object.values(cells).map((v) => String(v).trim());
+        if (values.indexOf('Customer') !== -1) kind = 'apex';
+        else if (values.indexOf('Balance due') !== -1 && values.indexOf('Contact') !== -1 && values.indexOf('Invoice') !== -1) kind = 'export';
+        if (!kind) continue;
+        header = {};
+        for (const [col, val] of Object.entries(cells)) header[String(val).trim()] = col;
         continue;
       }
       const get = (name) => cells[header[name]] || '';
+      if (kind === 'export') {
+        const parsed = parseExportRow(get);
+        if (parsed) out.push(parsed);
+        continue;
+      }
       const customer = get('Customer').replace(/\s+/g, ' ').trim();
       const balance = parseFloat(String(get('Open Balance (Aging)')).replace(/[$,]/g, ''));
       const date = parseExcelDate(get('Invoice Date'));
@@ -14749,7 +14771,8 @@
         balance
       });
     }
-    if (!header) throw new Error('Missing column: Customer. Use the Apex invoice summary export.');
+    if (!header) throw new Error('Missing column: Customer. Use the Apex invoice summary, or a Late AR export from this page.');
+    if (kind === 'export') return { kind, rows: out };
     const map = new Map();
     for (const row of out) {
       const key = row.invoice || (row.customer + '|' + row.date.getTime());
@@ -14760,7 +14783,38 @@
         prev.balance = prev.line;
       }
     }
-    return [...map.values()];
+    return { kind: 'apex', rows: [...map.values()] };
+  }
+  function parseExportRow(get) {
+    const company = String(get('Company') || '').replace(/\s+/g, ' ').trim();
+    const fileName = String(get('Invoice file name') || '').replace(/\s+/g, ' ').trim();
+    const invoice = String(get('Invoice') || '').trim();
+    if (/^total$/i.test(company) && !invoice) return null;
+    const customer = fileName || company;
+    const date = parseExcelDate(get('Invoice date'));
+    if (!customer || !date) return null;
+    const owed = parseFloat(String(get('Balance due')).replace(/[$,]/g, ''));
+    const past = parseFloat(String(get('Days past due')).replace(/[,]/g, ''));
+    const statusText = String(get('Contact') || '').trim().toLowerCase();
+    const contactStatus = AR_CONTACT_STATUSES.find((status) => status.toLowerCase() === statusText) || 'PENDING';
+    const contactDate = parseExcelDate(get('Date contacted'));
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return {
+      customer,
+      nameSaved: company || customer,
+      invoice,
+      date,
+      due: Number.isFinite(past) ? addDays(start, -Math.round(past)) : null,
+      bucket: String(get('Aging') || '').trim(),
+      balance: Number.isFinite(owed) ? owed : 0,
+      owed: Number.isFinite(owed) ? owed : 0,
+      owedLocked: Number.isFinite(owed),
+      acctLocked: true,
+      acctSaved: String(get('Apex account') || '').trim(),
+      contactStatus,
+      contactDate: contactDate ? iso(contactDate) : ''
+    };
   }
   function rememberScreen() {
     try { localStorage.setItem('apexCrmScreen', state.screen); } catch (err) { /* the tab will still work this visit */ }
@@ -14768,13 +14822,18 @@
   function arPayload() {
     return {
       name: AR_NAME,
-      rows: AR_ROWS.map((r) => ({
+        rows: AR_ROWS.map((r) => ({
         customer: r.customer,
         invoice: r.invoice,
         date: r.date ? iso(r.date) : '',
         due: r.due ? iso(r.due) : '',
         bucket: r.bucket,
-        balance: r.balance
+        balance: r.balance,
+        nameSaved: r.nameSaved || '',
+        acctLocked: !!r.acctLocked,
+        acctSaved: r.acctSaved || '',
+        owedLocked: !!r.owedLocked,
+        owed: r.owedLocked ? r.owed : ''
       }))
     };
   }
@@ -14786,7 +14845,12 @@
       date: r.date ? parseISO(r.date) : null,
       due: r.due ? parseISO(r.due) : null,
       bucket: r.bucket || '',
-      balance: Number(r.balance) || 0
+      balance: Number(r.balance) || 0,
+      nameSaved: r.nameSaved || '',
+      acctLocked: !!r.acctLocked,
+      acctSaved: r.acctSaved || '',
+      owedLocked: !!r.owedLocked,
+      owed: r.owedLocked ? Number(r.owed) || 0 : 0
     })).filter((r) => r.customer && r.date);
     if (!rows.length) return false;
     AR_ROWS = rows;
@@ -14905,6 +14969,39 @@
     arMatched = null;
     return added.length;
   }
+  function applyExportRows(incoming) {
+    const byKey = new Map();
+    AR_ROWS.forEach((row) => byKey.set(contactKey(row), row));
+    let updated = 0;
+    const added = [];
+    incoming.forEach((row) => {
+      const key = contactKey(row);
+      const prev = byKey.get(key);
+      if (prev) {
+        prev.customer = row.customer || prev.customer;
+        prev.nameSaved = row.nameSaved;
+        prev.acctLocked = true;
+        prev.acctSaved = row.acctSaved;
+        if (row.date) prev.date = row.date;
+        if (row.due) prev.due = row.due;
+        prev.bucket = row.bucket;
+        if (row.owedLocked) {
+          prev.owedLocked = true;
+          prev.owed = row.owed;
+        }
+        updated += 1;
+      } else {
+        byKey.set(key, row);
+        added.push(row);
+      }
+      if (!row.contactStatus || row.contactStatus === 'PENDING') delete AR_CONTACT[key];
+      else AR_CONTACT[key] = { status: row.contactStatus, date: row.contactDate || iso(new Date()) };
+    });
+    if (added.length) AR_ROWS = AR_ROWS.concat(added);
+    arMatched = null;
+    rememberArContact();
+    return { updated, added: added.length };
+  }
   function restoreScreen() {
     let saved = '';
     try { saved = localStorage.getItem('apexCrmScreen') || ''; } catch (err) {}
@@ -14921,17 +15018,23 @@
     const reader = new FileReader();
     reader.onload = () => {
       unzipFiles(reader.result).then((files) => {
-        const rows = parseArWorkbook(files);
-        if (!rows.length) throw new Error('No invoices were found in that spreadsheet.');
-        const already = AR_ROWS.length;
-        const added = mergeArRows(rows);
+        const parsed = parseArWorkbook(files);
+        if (!parsed.rows.length) throw new Error('No invoices were found in that spreadsheet.');
         AR_NAME = file.name;
         AR_LOADING = false;
         state.screen = 'latear';
+        let detail = '';
+        if (parsed.kind === 'export') {
+          const result = applyExportRows(parsed.rows);
+          detail = result.updated.toLocaleString('en-US') + ' invoices updated to match the file' + (result.added ? '. ' + result.added.toLocaleString('en-US') + ' new invoices added' : '') + '.';
+        } else {
+          const already = AR_ROWS.length;
+          const added = mergeArRows(parsed.rows);
+          detail = !already
+            ? added.toLocaleString('en-US') + ' invoices.'
+            : (added ? added.toLocaleString('en-US') + ' new invoices added. ' : 'No new invoices. ') + already.toLocaleString('en-US') + ' already here were kept, and days past due was updated.';
+        }
         const kept = rememberAr();
-        const detail = !already
-          ? added.toLocaleString('en-US') + ' invoices.'
-          : (added ? added.toLocaleString('en-US') + ' new invoices added. ' : 'No new invoices. ') + already.toLocaleString('en-US') + ' already here were kept, and days past due was updated.';
         showBanner('Loaded ' + file.name + ' · ' + detail + (kept ? ' They stay on the Late AR tab.' : ' This browser could not keep the file for next time.'), !kept);
         render();
       }).catch((err) => {

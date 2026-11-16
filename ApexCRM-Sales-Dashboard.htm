@@ -12266,7 +12266,9 @@
   }
   function saleTag(r) {
     const kind = revenueKind(r);
+    const term = String(r.term || '').toLowerCase().replace(/[^a-z]/g, '');
     const sub = r.category === 'Subscriptions' || String(r.pid || '').toUpperCase().startsWith('SUBSCRIPTION') || String(r.product || '').toLowerCase().startsWith('subscription');
+    if (kind === 'recurring' && term.indexOf('recurringrenewal') !== -1) return { label: 'Recurring', color: '#7c3aed' };
     if (kind === 'recurring' && sub) return { label: 'Subscription', color: '#0f9f8f' };
     if (kind === 'recurring') return { label: 'Recurring', color: '#7c3aed' };
     if (kind === 'new') return { label: 'New', color: '#16a34a' };

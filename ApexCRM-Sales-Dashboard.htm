@@ -12119,6 +12119,8 @@
     periodDir: 'desc',
     matrixKey: 'total',
     matrixDir: 'desc',
+    detailKey: 'date',
+    detailDir: 'desc',
     pinnedPeriod: '',
     accountGrain: 'month',
     arQ: '',
@@ -12261,6 +12263,16 @@
     if (ACCOUNT_CLASS.get(id) === 'new') return 'new';
     if (ACCOUNT_CLASS.get(id) === 'expand' && !expansionRevenueExcluded(r)) return 'expansion';
     return '';
+  }
+  function saleTag(r) {
+    const kind = revenueKind(r);
+    const sub = r.category === 'Subscriptions' || String(r.pid || '').toUpperCase().startsWith('SUBSCRIPTION') || String(r.product || '').toLowerCase().startsWith('subscription');
+    if (kind === 'recurring' && sub) return { label: 'Subscription', color: '#0f9f8f' };
+    if (kind === 'recurring') return { label: 'Recurring', color: '#7c3aed' };
+    if (kind === 'new') return { label: 'New', color: '#16a34a' };
+    if (kind === 'expansion') return { label: 'Expansion', color: '#2f6fed' };
+    if (sub) return { label: 'Subscription', color: '#0f9f8f' };
+    return { label: r.category || 'Other', color: CAT_COLOR[r.category] || '#94a3b8' };
   }
 
   function categorize(name) {
@@ -12410,8 +12422,11 @@
         pid,
         pkey,
         qty: num(r.Qty),
+        price: num(r.Price),
         discount: num(r.Discount),
-        revenue: num(r.PerITemTotal)
+        revenue: num(r.PerITemTotal),
+        subtotal: num(r.SubTotal),
+        billState: (r.BilledToState || '').trim()
       });
     }
     if (!staged.length) throw new Error('No dated sales rows were found.');
@@ -13324,6 +13339,86 @@
     return '<div class="table-wrap"><table><thead>' + head + '</thead><tbody>' + body + total + '</tbody></table></div>';
   }
 
+  function detailValue(r, key) {
+    if (key === 'date') return r.date.getTime();
+    if (key === 'acct') return String(r.acct || '');
+    if (key === 'company') return r.company.toLowerCase();
+    if (key === 'invoice') {
+      const n = parseFloat(String(r.invoice || '').replace(/^0+/, ''));
+      return Number.isFinite(n) ? n : String(r.invoice || '').toLowerCase();
+    }
+    if (key === 'tag') return saleTag(r).label.toLowerCase();
+    if (key === 'product') return r.product.toLowerCase();
+    if (key === 'pid') return String(r.pid || '').toLowerCase();
+    if (key === 'price') return r.price;
+    if (key === 'qty') return r.qty;
+    if (key === 'discount') return r.discount;
+    if (key === 'amount') return r.revenue;
+    if (key === 'subtotal') return r.subtotal;
+    if (key === 'seller') return String(r.seller || '').toLowerCase();
+    if (key === 'term') return String(r.term || '').toLowerCase();
+    if (key === 'region') return String(r.region || '').toLowerCase();
+    if (key === 'billed') return String(r.billed || '').toLowerCase();
+    if (key === 'billState') return String(r.billState || '').toLowerCase();
+    return 0;
+  }
+  function detailTable(model) {
+    const cols = [
+      ['date', 'Date', 'num', 'left'],
+      ['acct', 'Account', 'text', 'left'],
+      ['company', 'Company', 'text', 'left'],
+      ['invoice', 'Invoice', 'num', 'left'],
+      ['tag', 'Type', 'text', 'left'],
+      ['product', 'Product', 'text', 'left'],
+      ['pid', 'Product ID', 'text', 'left'],
+      ['price', 'Price', 'num', ''],
+      ['qty', 'Qty', 'num', ''],
+      ['amount', 'Amount', 'num', ''],
+      ['discount', 'Discount', 'num', ''],
+      ['subtotal', 'Invoice total', 'num', ''],
+      ['seller', 'Rep', 'text', 'left'],
+      ['term', 'Term', 'text', 'left'],
+      ['region', 'State', 'text', 'left'],
+      ['billed', 'Billed to', 'text', 'left'],
+      ['billState', 'Billed state', 'text', 'left']
+    ];
+    const head = '<tr>' + cols.map(([key, label, type, align]) => {
+      const on = state.detailKey === key ? ' on' : '';
+      return '<th class="' + align + on + '" data-dsort="' + key + '" data-type="' + type + '">' + esc(label) + sortMark(state.detailKey === key, state.detailDir) + '</th>';
+    }).join('') + '</tr>';
+    const rows = model.rows.slice().sort((a, b) => {
+      const av = detailValue(a, state.detailKey);
+      const bv = detailValue(b, state.detailKey);
+      if (av < bv) return state.detailDir === 'asc' ? -1 : 1;
+      if (av > bv) return state.detailDir === 'asc' ? 1 : -1;
+      return a.date - b.date || String(a.invoice).localeCompare(String(b.invoice));
+    });
+    const body = rows.map((r) => {
+      const tag = saleTag(r);
+      return '<tr>' +
+        '<td class="left">' + esc(shortDate(r.date)) + '</td>' +
+        '<td class="left">' + esc(r.acct) + '</td>' +
+        '<td class="left">' + esc(r.company) + '</td>' +
+        '<td class="left">' + esc(r.invoice) + '</td>' +
+        '<td class="left"><span class="pill" style="--c:' + tag.color + '">' + esc(tag.label) + '</span></td>' +
+        '<td class="left">' + esc(r.product) + '</td>' +
+        '<td class="left">' + esc(r.pid) + '</td>' +
+        '<td title="' + esc(moneyExact(r.price)) + '">' + esc(money(r.price)) + '</td>' +
+        '<td>' + esc(qty(r.qty)) + '</td>' +
+        '<td title="' + esc(moneyExact(r.revenue)) + '">' + esc(money(r.revenue)) + '</td>' +
+        '<td>' + esc(money(r.discount)) + '</td>' +
+        '<td title="' + esc(moneyExact(r.subtotal)) + '">' + esc(money(r.subtotal)) + '</td>' +
+        '<td class="left">' + esc(r.seller) + '</td>' +
+        '<td class="left">' + esc(r.term) + '</td>' +
+        '<td class="left">' + esc(regionName(r.region)) + '</td>' +
+        '<td class="left">' + esc(r.billed) + '</td>' +
+        '<td class="left">' + esc(r.billState) + '</td></tr>';
+    }).join('');
+    const avg = model.units ? model.revenue / model.units : 0;
+    const total = '<tr class="total"><td class="left">' + esc(qty(model.rows.length)) + ' lines</td><td class="left">' + esc(qty(model.accounts)) + ' accounts</td><td class="left"></td><td class="left">' + esc(model.invoices.toLocaleString('en-US')) + ' invoices</td><td></td><td></td><td></td><td title="Average price, amount divided by units">' + esc(money(avg)) + '</td><td>' + esc(qty(model.units)) + '</td><td>' + esc(money(model.revenue)) + '</td><td>' + esc(money(model.discount)) + '</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
+    return '<div class="table-wrap ar-invoices"><table><thead>' + head + '</thead><tbody>' + body + total + '</tbody></table></div>';
+  }
+
   function matrixTable(model) {
     const periods = model.filled;
     const metric = state.metric;
@@ -13373,15 +13468,18 @@
   }
 
   function tableCard(model) {
-    const noun = grainWord(state.grain);
     const range = shortDate(state.from) + ' – ' + shortDate(state.to);
-    const viewNote = state.view === 'matrix'
-      ? 'Each column is a ' + noun + '. Darker cells are that product’s higher ' + (state.metric === 'units' ? 'unit' : 'revenue') + ' periods.'
+    const details = state.view === 'details';
+    const viewNote = details
+      ? 'Each row is one line from the sales file in the date range above. Price is the unit price on that line. The average in the total row is the amount divided by units. The tag shows new, expansion, recurring, or subscription.'
       : 'Click a column to sort. ' + (model.latest ? 'The ' + model.latest.label + ' column compares with ' + (model.prior ? model.prior.label : 'the prior period') + '.' : '');
-    const table = model.products.length ? (state.view === 'matrix' ? matrixTable(model) : summaryTable(model)) : '<div class="empty">No products match these filters.</div>';
+    const table = model.rows.length ? (details ? detailTable(model) : summaryTable(model)) : '<div class="empty">No products match these filters.</div>';
     const invoiceNote = state.view === 'summary' ? '<p class="hint">Each product’s invoice count includes every invoice that contains that product. Invoices with more than one product appear on each of those rows. The total row is distinct invoices.</p>' : '';
-    return '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Products sold</h3></div><p>' + esc(grainTitle(state.grain) + ' · ' + range + ' · ' + model.products.length.toLocaleString('en-US') + ' products') + '</p></div>' +
-      '<div class="table-actions"><div class="seg seg-sm"><button type="button" data-view="summary"' + (state.view === 'summary' ? ' class="on"' : '') + '>Summary</button><button type="button" data-view="matrix"' + (state.view === 'matrix' ? ' class="on"' : '') + '>By ' + esc(noun) + '</button></div>' +
+    const subtitle = details
+      ? range + ' · ' + model.rows.length.toLocaleString('en-US') + ' lines · ' + model.invoices.toLocaleString('en-US') + ' invoices'
+      : grainTitle(state.grain) + ' · ' + range + ' · ' + model.products.length.toLocaleString('en-US') + ' products';
+    return '<section class="card table-card"><div class="table-head"><div><div class="card-h" style="margin:0"><h3>Products sold</h3></div><p>' + esc(subtitle) + '</p></div>' +
+      '<div class="table-actions"><div class="seg seg-sm"><button type="button" data-view="summary"' + (state.view === 'summary' ? ' class="on"' : '') + '>Summary</button><button type="button" data-view="details"' + (details ? ' class="on"' : '') + '>Details</button></div>' +
       '<button type="button" class="ghost" data-export>Export</button></div></div>' +
       '<p class="hint">' + esc(viewNote) + '</p>' + table + invoiceNote + '</section>';
   }
@@ -14490,6 +14588,18 @@
   function exportView() {
     if (!lastModel) return;
     const stamp = iso(state.from) + '-to-' + iso(state.to);
+    if (state.view === 'details') {
+      const header = ['Date', 'Account', 'Company', 'Invoice', 'Type', 'Product', 'Product ID', 'Price', 'Qty', 'Amount', 'Discount', 'Invoice total', 'Rep', 'Term', 'State', 'Billed to', 'Billed state'];
+      const lines = [header];
+      const rows = lastModel.rows.slice().sort((a, b) => a.date - b.date || String(a.invoice).localeCompare(String(b.invoice)));
+      rows.forEach((r) => {
+        lines.push([iso(r.date), r.acct, r.company, r.invoice, saleTag(r).label, r.product, r.pid, round2(r.price), round2(r.qty), round2(r.revenue), round2(r.discount), round2(r.subtotal), r.seller, r.term, r.region, r.billed, r.billState]);
+      });
+      const avg = lastModel.units ? lastModel.revenue / lastModel.units : 0;
+      lines.push(['Total', lastModel.accounts + ' accounts', '', lastModel.invoices + ' invoices', '', '', '', round2(avg), round2(lastModel.units), round2(lastModel.revenue), round2(lastModel.discount), '', '', '', '', '', '']);
+      download('ApexCRM-invoice-details-' + stamp + '.csv', toCSV(lines));
+      return;
+    }
     if (state.view === 'matrix') {
       const header = ['Product', 'Product ID', 'Category', 'Total'].concat(lastModel.filled.map((p) => p.label));
       const lines = [header];
@@ -14531,6 +14641,14 @@
       const key = arSort.dataset.arsort;
       if (state.arSort === key) state.arDir = state.arDir === 'asc' ? 'desc' : 'asc';
       else { state.arSort = key; state.arDir = arSort.dataset.type === 'num' ? 'desc' : 'asc'; }
+      render();
+      return;
+    }
+    const dsort = e.target.closest('[data-dsort]');
+    if (dsort) {
+      const key = dsort.dataset.dsort;
+      if (state.detailKey === key) state.detailDir = state.detailDir === 'asc' ? 'desc' : 'asc';
+      else { state.detailKey = key; state.detailDir = dsort.dataset.type === 'text' ? 'asc' : 'desc'; }
       render();
       return;
     }

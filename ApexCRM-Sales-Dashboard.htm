@@ -13436,12 +13436,10 @@
       ['date', 'Date', 'num', 'left'],
       ['acct', 'Account', 'text', 'left'],
       ['seller', 'Rep', 'text', 'left'],
-      ['company', 'Company', 'text', 'left'],
       ['tag', 'Type', 'text', 'left'],
+      ['company', 'Company', 'text', 'left'],
       ['product', 'Product', 'text', 'left'],
       ['pid', 'Product ID', 'text', 'left'],
-      ['price', 'Price', 'num', ''],
-      ['qty', 'Qty', 'num', ''],
       ['subtotal', 'Invoice total', 'num', ''],
       ['term', 'Term', 'text', 'left'],
       ['region', 'State', 'text', 'left'],
@@ -13464,20 +13462,17 @@
         '<td class="left">' + esc(slashDate(r.date)) + '</td>' +
         '<td class="left">' + esc(r.acct) + '</td>' +
         '<td class="left">' + esc(r.seller) + '</td>' +
-        '<td class="left">' + esc(r.company) + '</td>' +
         '<td class="left detail-tags">' + (r.tags || [saleTag(r)]).map((tag) => '<span class="pill" style="--c:' + tag.color + '">' + esc(tag.label) + '</span>').join('') + '</td>' +
+        '<td class="left">' + esc(r.company) + '</td>' +
         '<td class="left detail-fold">' + esc(r.product) + '</td>' +
         '<td class="left detail-fold">' + esc(r.pid) + '</td>' +
-        '<td title="' + esc((r.prices || [r.price]).map(moneyExact).join(' · ')) + '">' + esc(detailPriceText(r)) + '</td>' +
-        '<td>' + esc(qty(r.qty)) + '</td>' +
         '<td title="' + esc(moneyExact(r.subtotal)) + '">' + esc(money(r.subtotal)) + '</td>' +
         '<td class="left">' + esc(r.term) + '</td>' +
         '<td class="left">' + esc(String(r.region || '').split(' · ').map(regionName).join(' · ')) + '</td>' +
         '<td class="left">' + esc(r.billed) + '</td>' +
         '<td class="left">' + esc(r.billState) + '</td></tr>';
     }).join('');
-    const avg = model.units ? model.revenue / model.units : 0;
-    const total = '<tr class="total"><td class="left">' + esc(rows.length.toLocaleString('en-US')) + ' invoices</td><td class="left">' + esc(qty(model.accounts)) + ' accounts</td><td></td><td class="left"></td><td></td><td></td><td></td><td title="Average price, amount divided by units">' + esc(money(avg)) + '</td><td>' + esc(qty(model.units)) + '</td><td></td><td></td><td></td><td></td><td></td></tr>';
+    const total = '<tr class="total"><td class="left">' + esc(rows.length.toLocaleString('en-US')) + ' invoices</td><td class="left">' + esc(qty(model.accounts)) + ' accounts</td><td></td><td></td><td class="left"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
     return '<div class="table-wrap ar-invoices"><table><thead>' + head + '</thead><tbody>' + body + total + '</tbody></table></div>';
   }
 
@@ -13533,7 +13528,7 @@
     const range = shortDate(state.from) + ' – ' + shortDate(state.to);
     const details = state.view === 'details';
     const viewNote = details
-      ? 'Lines from the same invoice are combined into one row. Products, prices, and tags from those lines are listed together, and the amounts are added up. The average in the total row is the amount divided by units.'
+      ? 'Lines from the same invoice are combined into one row. Products and tags from those lines are listed together, and the invoice total is the amount for that invoice.'
       : 'Click a column to sort. ' + (model.latest ? 'The ' + model.latest.label + ' column compares with ' + (model.prior ? model.prior.label : 'the prior period') + '.' : '');
     const table = model.rows.length ? (details ? detailTable(model) : summaryTable(model)) : '<div class="empty">No products match these filters.</div>';
     const invoiceNote = state.view === 'summary' ? '<p class="hint">Each product’s invoice count includes every invoice that contains that product. Invoices with more than one product appear on each of those rows. The total row is distinct invoices.</p>' : '';
@@ -14651,15 +14646,13 @@
     if (!lastModel) return;
     const stamp = iso(state.from) + '-to-' + iso(state.to);
     if (state.view === 'details') {
-      const header = ['Date', 'Account', 'Rep', 'Company', 'Type', 'Product', 'Product ID', 'Price', 'Qty', 'Invoice total', 'Term', 'State', 'Billed to', 'Billed state'];
+      const header = ['Date', 'Account', 'Rep', 'Type', 'Company', 'Product', 'Product ID', 'Invoice total', 'Term', 'State', 'Billed to', 'Billed state'];
       const lines = [header];
       const rows = groupDetailRows(lastModel.rows).sort((a, b) => a.date - b.date || String(a.invoice).localeCompare(String(b.invoice)));
       rows.forEach((r) => {
-        const price = r.prices.length > 1 ? r.prices.map(round2).join(' | ') : round2(r.price);
-        lines.push([iso(r.date), r.acct, r.seller, r.company, r.tags.map((tag) => tag.label).join(' | '), r.product, r.pid, price, round2(r.qty), round2(r.subtotal), r.term, r.region, r.billed, r.billState]);
+        lines.push([iso(r.date), r.acct, r.seller, r.tags.map((tag) => tag.label).join(' | '), r.company, r.product, r.pid, round2(r.subtotal), r.term, r.region, r.billed, r.billState]);
       });
-      const avg = lastModel.units ? lastModel.revenue / lastModel.units : 0;
-      lines.push(['Total', lastModel.accounts + ' accounts', '', '', '', '', '', round2(avg), round2(lastModel.units), '', '', '', '', '']);
+      lines.push(['Total', lastModel.accounts + ' accounts', '', '', '', '', '', '', '', '', '', '']);
       download('ApexCRM-invoice-details-' + stamp + '.csv', toCSV(lines));
       return;
     }

@@ -12173,6 +12173,9 @@
   function shortDate(d) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
+  function slashDate(d) {
+    return (d.getMonth() + 1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(-2);
+  }
   function monthLabel(d) {
     return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   }
@@ -13461,7 +13464,7 @@
     });
     const body = rows.map((r) => {
       return '<tr>' +
-        '<td class="left">' + esc(shortDate(r.date)) + '</td>' +
+        '<td class="left">' + esc(slashDate(r.date)) + '</td>' +
         '<td class="left">' + esc(r.acct) + '</td>' +
         '<td class="left">' + esc(r.company) + '</td>' +
         '<td class="left">' + esc(r.invoice) + '</td>' +

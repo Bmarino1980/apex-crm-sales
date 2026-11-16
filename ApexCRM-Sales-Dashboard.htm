@@ -12624,9 +12624,7 @@
     const byRegion = new Map();
     for (const r of rows) {
       addMap(byCat, r.category, r.revenue, r.qty);
-      const sellerTerm = String(r.term || '').toLowerCase().replace(/[^a-z]/g, '');
-      const ejyRenewal = String(r.seller || '').toUpperCase() === 'EJY' && sellerTerm.indexOf('recurringrenewal') !== -1;
-      if (!ejyRenewal) addMap(bySeller, r.seller, r.revenue, r.qty);
+      if (!isRecurringRevenue(r)) addMap(bySeller, r.seller, r.revenue, r.qty);
       addMap(byTerm, r.term, r.revenue, r.qty);
       addMap(byCompany, r.company, r.revenue, r.qty);
       let region = byRegion.get(r.region);
@@ -12921,7 +12919,7 @@
     return '<div class="cards-4">' +
       '<section class="card"><div class="card-h"><h3>Revenue mix</h3><span class="help" title="Product categories for the selected measure. Click a category to add or remove it from the filter.">?</span></div><div class="mix">' + donutHTML(model.catSlices) + '</div></section>' +
       '<section class="card"><div class="card-h"><h3>Industry</h3><span class="help" title="Assessor and Insurance come from the company name. Appraiser also includes their recurring renewals, Portal Sub Tier 1, Portal Pro modules, and Portal Standard modules. Everything else is Other.">?</span></div>' + industries + '</section>' +
-      '<section class="card"><div class="card-h"><h3>Sales reps</h3><span class="help" title="Revenue by the Sold By rep on each line. EJY leaves out Recurring Renewal sales. Click a rep to add or remove them from the filter.">?</span></div>' + sellers + '</section>' +
+      '<section class="card"><div class="card-h"><h3>Sales reps</h3><span class="help" title="Revenue by the Sold By rep on each line. Recurring sales are left out of these totals and counted under Recurring revenue in New accounts. Click a rep to add or remove them from the filter.">?</span></div>' + sellers + '</section>' +
       '<section class="card"><div class="card-h"><h3>Top customers</h3><span class="help" title="Revenue by company name. Click a customer to filter the dashboard.">?</span></div>' + customers + '</section></div>';
   }
 

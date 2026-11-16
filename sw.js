@@ -1,4 +1,4 @@
-const CACHE = 'apex-crm-sales-v25';
+const CACHE = 'apex-crm-sales-v26';
 const FILES = [
   './',
   './index.html',

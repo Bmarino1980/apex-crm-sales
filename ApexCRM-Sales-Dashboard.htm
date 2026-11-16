@@ -54,6 +54,7 @@
     padding: 10px 28px;
   }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+  .phone-menu { display: none; }
   .logo {
     width: 34px; height: 34px; border-radius: 9px; background: var(--blue);
     display: grid; place-items: center; flex: none;
@@ -411,17 +412,38 @@
     body { overflow-x: hidden; }
     .topbar { padding-top: env(safe-area-inset-top); }
     .topbar-inner {
-      min-height: 0; flex-direction: column; align-items: stretch; gap: 10px;
+      position: relative;
+      min-height: 0; flex-direction: row; flex-wrap: wrap; align-items: center;
+      justify-content: space-between; gap: 8px;
       padding: 10px 14px;
     }
-    .top-actions { width: 100%; justify-content: flex-start; }
-    #rangeSeg {
-      width: 100%; max-width: 100%; overflow-x: auto; flex-wrap: nowrap;
-      -webkit-overflow-scrolling: touch;
+    .brand { min-width: 0; }
+    .phone-menu {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; margin-left: auto; flex: none;
+      border: 1px solid var(--line); background: #fff; color: #3c4d66;
+      border-radius: 10px; padding: 0;
     }
-    #rangeSeg button { flex: none; min-height: 44px; }
-    .dates { width: 100%; }
-    .dates input[type="date"] { flex: 1; min-width: 0; min-height: 44px; font-size: 16px; }
+    .topbar.menu-open .phone-menu { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .top-actions {
+      display: none;
+      position: absolute; top: calc(100% - 2px); right: 14px; z-index: 40;
+      width: min(260px, calc(100vw - 28px));
+      flex-direction: column; align-items: stretch; justify-content: flex-start;
+      gap: 6px; padding: 8px;
+      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(16, 24, 40, .16);
+    }
+    .topbar.menu-open .top-actions { display: flex; }
+    #rangeSeg {
+      width: 100%; max-width: 100%; flex-direction: column; align-items: stretch;
+      overflow: visible; border: 0; box-shadow: none; background: transparent; padding: 0;
+    }
+    #rangeSeg button { flex: none; width: 100%; text-align: left; min-height: 44px; }
+    #load-btn { width: 100%; justify-content: flex-start; }
+    .dates { width: 100%; flex-direction: column; align-items: stretch; }
+    .dates input[type="date"] { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; }
+    .range-readout { white-space: normal; text-align: left; }
     .icon-btn, .ghost, .filter-toggle, .ar-note, .ar-note-save { min-height: 44px; }
     .filter-toggle { width: 44px; height: 44px; }
     .wrap {
@@ -465,7 +487,12 @@
         </div>
         Apex | CRM Sales
       </div>
-      <div class="top-actions">
+      <button type="button" class="phone-menu" id="phoneMenu" aria-label="Date range and upload" aria-expanded="false" aria-controls="topActions">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M3 4.5h12M3 9h12M3 13.5h12"/>
+        </svg>
+      </button>
+      <div class="top-actions" id="topActions">
         <div class="seg seg-sm" id="rangeSeg" role="tablist" aria-label="Date range">
           <button type="button" data-range="all" class="on">All</button>
           <button type="button" data-range="week">This week</button>
@@ -14907,12 +14934,32 @@
     if (!b) return;
     applyRange(b.dataset.range);
   });
+  const phoneMenu = $('phoneMenu');
+  function closePhoneMenu() {
+    document.querySelector('.topbar').classList.remove('menu-open');
+    if (phoneMenu) phoneMenu.setAttribute('aria-expanded', 'false');
+  }
+  if (phoneMenu) {
+    phoneMenu.addEventListener('click', () => {
+      const open = document.querySelector('.topbar').classList.toggle('menu-open');
+      phoneMenu.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.topbar')) closePhoneMenu();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePhoneMenu(); });
+    $('rangeSeg').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-range]');
+      if (b && b.dataset.range !== 'custom') closePhoneMenu();
+    });
+  }
   $('from').addEventListener('change', onDateInput);
   $('to').addEventListener('change', onDateInput);
   $('clear').addEventListener('click', clearFilters);
   $('load-btn').addEventListener('click', () => {
     if (state.screen === 'latear') $('ar-file').click();
     else $('file').click();
+    closePhoneMenu();
   });
   $('file').addEventListener('change', () => {
     const file = $('file').files && $('file').files[0];

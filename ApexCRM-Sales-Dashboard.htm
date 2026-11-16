@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2f6fed">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -406,6 +406,49 @@
     .cards-4 { grid-template-columns: 1fr; }
     .span3 { grid-column: auto; }
     .k-value { font-size: 20px; }
+  }
+  @media (max-width: 520px), (max-width: 960px) and (pointer: coarse) {
+    body { overflow-x: hidden; }
+    .topbar { padding-top: env(safe-area-inset-top); }
+    .topbar-inner {
+      min-height: 0; flex-direction: column; align-items: stretch; gap: 10px;
+      padding: 10px 14px;
+    }
+    .top-actions { width: 100%; justify-content: flex-start; }
+    #rangeSeg {
+      width: 100%; max-width: 100%; overflow-x: auto; flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+    #rangeSeg button { flex: none; min-height: 44px; }
+    .dates { width: 100%; }
+    .dates input[type="date"] { flex: 1; min-width: 0; min-height: 44px; font-size: 16px; }
+    .icon-btn, .ghost, .filter-toggle, .ar-note, .ar-note-save { min-height: 44px; }
+    .filter-toggle { width: 44px; height: 44px; }
+    .wrap {
+      padding-left: max(14px, env(safe-area-inset-left));
+      padding-right: max(14px, env(safe-area-inset-right));
+      padding-bottom: max(28px, env(safe-area-inset-bottom));
+    }
+    .head-row, .controls, .table-actions, .ar-tools { width: 100%; }
+    #metricSeg { flex: 1; min-width: 0; }
+    #metricSeg button { flex: 1; min-height: 44px; padding: 10px 6px; }
+    .seg.sm button { min-height: 40px; }
+    .filters { flex-direction: column; align-items: stretch; }
+    .field, .multi, .company-find { width: 100%; min-width: 0; }
+    .field select, .field input[type="search"], .multi-btn, .ar-tools input[type="search"] {
+      width: 100%; max-width: none; min-width: 0; min-height: 44px; font-size: 16px;
+    }
+    .multi-panel, .company-results { max-width: calc(100vw - 36px); }
+    .multi-all, .multi-opt, .company-hit, .ar-contact-menu button { min-height: 44px; }
+    .cards-4, .ar-kpis, .ar-week-top { grid-template-columns: 1fr; }
+    .kpi { min-height: 0; }
+    .ar-stats, .ar-money { grid-template-columns: 1fr; }
+    .table-wrap, .trend-table {
+      max-width: 100%;
+      -webkit-overflow-scrolling: touch;
+    }
+    table { width: max-content; min-width: 100%; }
+    th, td { padding: 10px 12px; }
   }
 </style>
 </head>

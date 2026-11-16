@@ -13468,7 +13468,7 @@
         '<td class="left detail-fold">' + esc(r.pid) + '</td>' +
         '<td title="' + esc(moneyExact(r.subtotal)) + '">' + esc(money(r.subtotal)) + '</td>' +
         '<td class="left">' + esc(r.term) + '</td>' +
-        '<td class="left">' + esc(String(r.region || '').split(' · ').map(regionName).join(' · ')) + '</td>' +
+        '<td class="left">' + esc(r.region) + '</td>' +
         '<td class="left">' + esc(r.billed) + '</td>' +
         '<td class="left">' + esc(r.billState) + '</td></tr>';
     }).join('');
